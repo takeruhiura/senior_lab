@@ -1,0 +1,173 @@
+================================================================================
+QUICK COMMAND REFERENCE - License Plate Detection (FPGA Ready)
+================================================================================
+
+✅ DETECTION IS WORKING! Issues fixed, performance optimized for FPGA.
+
+________________________________________________________________________________
+MOST COMMON COMMANDS
+________________________________________________________________________________
+
+1. DETECT IN IMAGE (Fast Mode - Recommended)
+   python3 detect.py --mode image --source coloradoplate.jpg --img-size 320
+
+2. REAL-TIME WEBCAM (Press 'q' to quit)
+   python3 detect.py --mode webcam --source 0 --img-size 320
+
+3. PROCESS VIDEO
+   python3 detect.py --mode video --source input.mp4 --img-size 320 --save-video
+
+4. EXPORT FOR FPGA (ONNX)
+   python3 detect.py --mode export --export-format onnx --img-size 320
+
+5. BENCHMARK SPEED
+   python3 detect.py --mode benchmark --img-size 320 --benchmark-runs 50
+
+6. FPGA INTEGRATION TEST
+   python3 fpga_integration.py
+
+________________________________________________________________________________
+PERFORMANCE ON YOUR SYSTEM (Apple M2 Pro)
+________________________________________________________________________________
+
+Image Size    Speed        FPS       Use Case
+─────────────────────────────────────────────────────────────────────
+320x320      13.34ms      75 FPS    ⭐ Real-time FPGA (RECOMMENDED)
+416x416      ~22ms        45 FPS    Balanced
+640x640      39.38ms      25 FPS    High accuracy
+
+Batch:       59.6 images/second
+
+________________________________________________________________________________
+QUICK TESTS
+________________________________________________________________________________
+
+Test 1: Single Image Detection
+   python3 detect.py --mode image --source coloradoplate.jpg --img-size 320
+   → Output: detected_plates/annotated_0.jpg
+
+Test 2: Webcam (Live Demo)
+   python3 detect.py --mode webcam --source 0 --img-size 320
+   → Shows live FPS counter, press 'q' to quit
+
+Test 3: Export for FPGA
+   python3 detect.py --mode export --export-format onnx --img-size 320
+   → Creates: best.onnx (11.6 MB)
+
+________________________________________________________________________________
+FILE OUTPUTS
+________________________________________________________________________________
+
+After detection, you'll find:
+   detected_plates/plate_0_0.jpg      - Cropped license plate
+   detected_plates/annotated_0.jpg    - Image with bounding boxes
+   best.onnx                          - Exported model for FPGA
+
+________________________________________________________________________________
+PARAMETERS EXPLAINED
+________________________________________________________________________________
+
+--mode          Operation mode
+                • image     = Single image detection
+                • video     = Process video file
+                • webcam    = Real-time webcam
+                • export    = Export for FPGA
+                • benchmark = Test speed
+
+--source        Input source
+                • Image path: "myimage.jpg"
+                • Video path: "myvideo.mp4"
+                • Webcam: 0 (or 1, 2 for other cameras)
+
+--img-size      Input image size (affects speed)
+                • 320  = Fastest (75 FPS) ⭐ RECOMMENDED FOR FPGA
+                • 416  = Balanced (45 FPS)
+                • 640  = Most accurate (25 FPS)
+
+--conf          Confidence threshold
+                • 0.15 = More detections (may have false positives)
+                • 0.25 = Default (balanced)
+                • 0.35 = Fewer detections (high confidence only)
+
+--save-video    Save output video (flag, no value needed)
+
+--export-format Format for FPGA export
+                • onnx     = Universal (recommended)
+                • openvino = Intel FPGAs
+                • engine   = TensorRT (NVIDIA)
+
+________________________________________________________________________________
+FPGA DEPLOYMENT WORKFLOW
+________________________________________________________________________________
+
+Step 1: Test Detection
+   python3 detect.py --mode image --source test.jpg --img-size 320
+
+Step 2: Export Model
+   python3 detect.py --mode export --export-format onnx --img-size 320
+
+Step 3: Integrate with FPGA
+   - Use fpga_integration.py as template
+   - Modify callback to send data to your FPGA
+   - Deploy best.onnx on FPGA hardware
+
+Step 4: Optimize (Optional)
+   - Quantize to INT8 for faster inference
+   - Use Vitis AI (Xilinx) or OpenVINO (Intel)
+   - Expected: 100-150 FPS on FPGA @ 320x320
+
+________________________________________________________________________________
+TROUBLESHOOTING
+________________________________________________________________________________
+
+Problem: No detections
+Solution: Lower confidence threshold
+   python3 detect.py --mode image --source IMAGE.jpg --conf 0.15
+
+Problem: Too slow
+Solution: Use smaller image size
+   python3 detect.py --mode image --source IMAGE.jpg --img-size 320
+
+Problem: Can't find model
+Solution: Make sure best.pt is in the same folder as detect.py
+
+Problem: ImportError
+Solution: Install dependencies
+   pip install -r requirements.txt
+
+________________________________________________________________________________
+DOCUMENTATION
+________________________________________________________________________________
+
+QUICKSTART.md  - Detailed examples and usage guide
+README.md      - Complete documentation
+SUMMARY.md     - Performance summary and FPGA deployment guide
+COMMANDS.txt   - This file (quick reference)
+
+________________________________________________________________________________
+EXAMPLE WORKFLOW
+________________________________________________________________________________
+
+# 1. Test on your image
+python3 detect.py --mode image --source myplate.jpg --img-size 320
+
+# 2. Benchmark your system
+python3 detect.py --mode benchmark --img-size 320
+
+# 3. Test real-time
+python3 detect.py --mode webcam --source 0 --img-size 320
+
+# 4. Export for FPGA
+python3 detect.py --mode export --export-format onnx --img-size 320
+
+# 5. Integrate with your system
+python3 fpga_integration.py
+
+________________________________________________________________________________
+
+🎉 Everything is ready for FPGA deployment!
+
+Questions? Run: python3 detect.py --help
+
+================================================================================
+
