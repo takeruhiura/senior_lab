@@ -27,11 +27,11 @@ module sobel_tb;
     integer max_val;
     reg [8*10:0] format_type;
     
-    // Instantiate module (will be configured after reading image)
+    // Instantiate module (will use actual image dimensions)
     sobel_filter #(
         .WIDTH(WIDTH),
-        .IMG_WIDTH(256),  // Default, will be overridden
-        .IMG_HEIGHT(256)
+        .IMG_WIDTH(640),  // Set to your max expected width
+        .IMG_HEIGHT(480)  // Set to your max expected height
     ) dut (
         .clk(clk),
         .rst_n(rst_n),
