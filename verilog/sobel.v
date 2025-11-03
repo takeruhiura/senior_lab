@@ -1,9 +1,9 @@
 // sobel_filter.v
-// Sobel edge detection module
+// Sobel edge detection module with streaming architecture
 module sobel_filter #(
     parameter WIDTH = 8,
-    parameter IMG_WIDTH = 256,
-    parameter IMG_HEIGHT = 256
+    parameter IMG_WIDTH = 640,
+    parameter IMG_HEIGHT = 480
 )(
     input wire clk,
     input wire rst_n,
@@ -14,123 +14,138 @@ module sobel_filter #(
     output reg done
 );
 
-    // 3x3 window buffer
-    reg [WIDTH-1:0] window [0:2][0:2];
+    // Line buffers for 3 rows
+    reg [WIDTH-1:0] line0 [0:IMG_WIDTH-1];
+    reg [WIDTH-1:0] line1 [0:IMG_WIDTH-1];
+    reg [WIDTH-1:0] line2 [0:IMG_WIDTH-1];
     
     // Counters
-    reg [15:0] row_cnt;
-    reg [15:0] col_cnt;
-    reg [15:0] out_row;
-    reg [15:0] out_col;
+    reg [15:0] in_col, in_row;
+    reg [15:0] out_col, out_row;
     
     // State machine
     reg [2:0] state;
-    localparam IDLE = 0, LOAD = 1, COMPUTE = 2, DONE = 3;
+    localparam IDLE = 0, LOAD_ROW0 = 1, LOAD_ROW1 = 2, PROCESS = 3, DONE_STATE = 4;
     
-    // Sobel gradients
+    // 3x3 window
+    reg [WIDTH-1:0] w00, w01, w02;
+    reg [WIDTH-1:0] w10, w11, w12;
+    reg [WIDTH-1:0] w20, w21, w22;
+    
+    // Sobel computation
     reg signed [WIDTH+10:0] Gx, Gy;
-    reg [WIDTH+10:0] magnitude;
+    reg [WIDTH+10:0] mag;
     
-    // Line buffers for 3 rows
-    reg [WIDTH-1:0] line_buf0 [0:IMG_WIDTH-1];
-    reg [WIDTH-1:0] line_buf1 [0:IMG_WIDTH-1];
-    reg [WIDTH-1:0] line_buf2 [0:IMG_WIDTH-1];
-    
-    integer i, j;
+    integer i;
     
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state <= IDLE;
-            row_cnt <= 0;
-            col_cnt <= 0;
-            out_row <= 0;
+            in_col <= 0;
+            in_row <= 0;
             out_col <= 0;
+            out_row <= 0;
             valid_out <= 0;
             done <= 0;
-            for (i = 0; i < 3; i = i + 1)
-                for (j = 0; j < 3; j = j + 1)
-                    window[i][j] <= 0;
+            pixel_out <= 0;
         end else begin
+            valid_out <= 0;  // Default
+            
             case (state)
                 IDLE: begin
                     done <= 0;
-                    valid_out <= 0;
                     if (start) begin
-                        state <= LOAD;
-                        row_cnt <= 0;
-                        col_cnt <= 0;
-                        out_row <= 0;
+                        state <= LOAD_ROW0;
+                        in_col <= 0;
+                        in_row <= 0;
                         out_col <= 0;
+                        out_row <= 0;
                     end
                 end
                 
-                LOAD: begin
-                    // Store pixel in appropriate line buffer
-                    if (row_cnt == 0)
-                        line_buf0[col_cnt] <= pixel_in;
-                    else if (row_cnt == 1)
-                        line_buf1[col_cnt] <= pixel_in;
-                    else
-                        line_buf2[col_cnt] <= pixel_in;
+                LOAD_ROW0: begin
+                    // Load first row into line0
+                    line0[in_col] <= pixel_in;
                     
-                    // Update counters
-                    if (col_cnt == IMG_WIDTH - 1) begin
-                        col_cnt <= 0;
-                        if (row_cnt == IMG_HEIGHT - 1) begin
-                            state <= COMPUTE;
-                            out_row <= 0;
-                            out_col <= 0;
-                        end else begin
-                            row_cnt <= row_cnt + 1;
-                        end
+                    if (in_col == IMG_WIDTH - 1) begin
+                        in_col <= 0;
+                        state <= LOAD_ROW1;
                     end else begin
-                        col_cnt <= col_cnt + 1;
+                        in_col <= in_col + 1;
                     end
                 end
                 
-                COMPUTE: begin
-                    // Load 3x3 window
+                LOAD_ROW1: begin
+                    // Load second row into line1
+                    line1[in_col] <= pixel_in;
+                    
+                    if (in_col == IMG_WIDTH - 1) begin
+                        in_col <= 0;
+                        in_row <= 2;
+                        state <= PROCESS;
+                    end else begin
+                        in_col <= in_col + 1;
+                    end
+                end
+                
+                PROCESS: begin
+                    // Load new pixel into line2
+                    if (in_row < IMG_HEIGHT) begin
+                        line2[in_col] <= pixel_in;
+                        in_col <= in_col + 1;
+                        
+                        if (in_col == IMG_WIDTH - 1) begin
+                            in_col <= 0;
+                            in_row <= in_row + 1;
+                        end
+                    end
+                    
+                    // Compute Sobel for current window position
                     if (out_col < IMG_WIDTH - 2) begin
-                        window[0][0] <= line_buf0[out_col];
-                        window[0][1] <= line_buf0[out_col + 1];
-                        window[0][2] <= line_buf0[out_col + 2];
-                        window[1][0] <= line_buf1[out_col];
-                        window[1][1] <= line_buf1[out_col + 1];
-                        window[1][2] <= line_buf1[out_col + 2];
-                        window[2][0] <= line_buf2[out_col];
-                        window[2][1] <= line_buf2[out_col + 1];
-                        window[2][2] <= line_buf2[out_col + 2];
+                        // Load 3x3 window
+                        w00 <= line0[out_col];
+                        w01 <= line0[out_col + 1];
+                        w02 <= line0[out_col + 2];
+                        w10 <= line1[out_col];
+                        w11 <= line1[out_col + 1];
+                        w12 <= line1[out_col + 2];
+                        w20 <= line2[out_col];
+                        w21 <= line2[out_col + 1];
+                        w22 <= line2[out_col + 2];
                         
-                        // Compute Sobel gradients
-                        Gx = (2*$signed({1'b0, window[2][1]}) + $signed({1'b0, window[2][0]}) + $signed({1'b0, window[2][2]})) -
-                             (2*$signed({1'b0, window[0][1]}) + $signed({1'b0, window[0][0]}) + $signed({1'b0, window[0][2]}));
+                        // Sobel Gx = [[-1,0,1],[-2,0,2],[-1,0,1]]
+                        Gx = ($signed({1'b0, w02}) + 2*$signed({1'b0, w12}) + $signed({1'b0, w22})) -
+                             ($signed({1'b0, w00}) + 2*$signed({1'b0, w10}) + $signed({1'b0, w20}));
                         
-                        Gy = (2*$signed({1'b0, window[1][2]}) + $signed({1'b0, window[0][2]}) + $signed({1'b0, window[2][2]})) -
-                             (2*$signed({1'b0, window[1][0]}) + $signed({1'b0, window[0][0]}) + $signed({1'b0, window[2][0]}));
+                        // Sobel Gy = [[1,2,1],[0,0,0],[-1,-2,-1]]
+                        Gy = ($signed({1'b0, w00}) + 2*$signed({1'b0, w01}) + $signed({1'b0, w02})) -
+                             ($signed({1'b0, w20}) + 2*$signed({1'b0, w21}) + $signed({1'b0, w22}));
                         
-                        // Approximate magnitude (|Gx| + |Gy|) for hardware efficiency
-                        magnitude = (Gx[WIDTH+10] ? -Gx : Gx) + (Gy[WIDTH+10] ? -Gy : Gy);
+                        // Magnitude approximation: |Gx| + |Gy|
+                        mag = (Gx[WIDTH+10] ? -Gx : Gx) + (Gy[WIDTH+10] ? -Gy : Gy);
                         
-                        // Saturate to 8-bit
-                        pixel_out <= (magnitude > 255) ? 8'd255 : magnitude[7:0];
+                        // Saturate and output
+                        pixel_out <= (mag > 255) ? 8'd255 : mag[7:0];
                         valid_out <= 1;
                         
-                        // Update position
-                        if (out_col == IMG_WIDTH - 3) begin
-                            out_col <= 0;
-                            if (out_row == IMG_HEIGHT - 3) begin
-                                state <= DONE;
-                            end else begin
-                                out_row <= out_row + 1;
-                            end
-                        end else begin
-                            out_col <= out_col + 1;
+                        out_col <= out_col + 1;
+                    end else if (out_row < IMG_HEIGHT - 3) begin
+                        // Move to next row
+                        out_col <= 0;
+                        out_row <= out_row + 1;
+                        
+                        // Shift line buffers
+                        for (i = 0; i < IMG_WIDTH; i = i + 1) begin
+                            line0[i] <= line1[i];
+                            line1[i] <= line2[i];
                         end
+                    end else begin
+                        // Processing complete
+                        state <= DONE_STATE;
                     end
                 end
                 
-                DONE: begin
-                    valid_out <= 0;
+                DONE_STATE: begin
                     done <= 1;
                     state <= IDLE;
                 end
