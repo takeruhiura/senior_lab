@@ -4,7 +4,7 @@
 
 module sobel_tb;
     parameter WIDTH = 8;
-    parameter MAX_SIZE = 512;  // Maximum image dimension
+    parameter MAX_SIZE = 1024;  // Maximum image dimension (supports up to 1024x1024)
     
     reg clk;
     reg rst_n;
