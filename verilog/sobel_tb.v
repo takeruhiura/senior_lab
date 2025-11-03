@@ -1,11 +1,10 @@
 // sobel_tb.v
-// Testbench for Sobel filter
+// Testbench for Sobel filter - reads PGM image file
 `timescale 1ns/1ps
 
 module sobel_tb;
     parameter WIDTH = 8;
-    parameter IMG_WIDTH = 64;  // Small test image
-    parameter IMG_HEIGHT = 64;
+    parameter MAX_SIZE = 512;  // Maximum image dimension
     
     reg clk;
     reg rst_n;
@@ -15,18 +14,24 @@ module sobel_tb;
     wire valid_out;
     wire done;
     
+    // Image parameters (read from file)
+    integer IMG_WIDTH;
+    integer IMG_HEIGHT;
+    
     // Image storage
-    reg [WIDTH-1:0] input_image [0:IMG_HEIGHT-1][0:IMG_WIDTH-1];
-    reg [WIDTH-1:0] output_image [0:IMG_HEIGHT-3][0:IMG_WIDTH-3];
+    reg [WIDTH-1:0] input_image [0:MAX_SIZE*MAX_SIZE-1];
+    reg [WIDTH-1:0] output_image [0:MAX_SIZE*MAX_SIZE-1];
     
-    integer i, j, out_i, out_j;
-    integer in_file, out_file;
+    integer i, j, pixel_idx, out_idx;
+    integer in_file, out_file, scan_result;
+    integer max_val;
+    reg [8*10:0] format_type;
     
-    // Instantiate module
+    // Instantiate module (will be configured after reading image)
     sobel_filter #(
         .WIDTH(WIDTH),
-        .IMG_WIDTH(IMG_WIDTH),
-        .IMG_HEIGHT(IMG_HEIGHT)
+        .IMG_WIDTH(256),  // Default, will be overridden
+        .IMG_HEIGHT(256)
     ) dut (
         .clk(clk),
         .rst_n(rst_n),
@@ -49,41 +54,57 @@ module sobel_tb;
         rst_n = 0;
         start = 0;
         pixel_in = 0;
-        out_i = 0;
-        out_j = 0;
+        pixel_idx = 0;
+        out_idx = 0;
         
-        // Create test image (gradient pattern)
-        for (i = 0; i < IMG_HEIGHT; i = i + 1) begin
-            for (j = 0; j < IMG_WIDTH; j = j + 1) begin
-                // Create a pattern: diagonal gradient + square
-                if ((i > 20 && i < 40) && (j > 20 && j < 40))
-                    input_image[i][j] = 255; // White square
-                else
-                    input_image[i][j] = (i + j) * 2; // Gradient
-            end
+        // Read PGM file
+        in_file = $fopen("input_image.pgm", "r");
+        if (in_file == 0) begin
+            $display("ERROR: Cannot open input_image.pgm");
+            $display("Please create input_image.pgm using the Python script:");
+            $display("  python image_to_pgm.py your_image.jpg");
+            $finish;
         end
         
-        // Save input image to file
-        in_file = $fopen("input_image.txt", "w");
-        for (i = 0; i < IMG_HEIGHT; i = i + 1) begin
-            for (j = 0; j < IMG_WIDTH; j = j + 1) begin
-                $fwrite(in_file, "%3d ", input_image[i][j]);
-            end
-            $fwrite(in_file, "\n");
+        // Read PGM header
+        scan_result = $fscanf(in_file, "%s\n", format_type);
+        if (format_type != "P2") begin
+            $display("ERROR: Only P2 (ASCII) PGM format supported");
+            $fclose(in_file);
+            $finish;
+        end
+        
+        scan_result = $fscanf(in_file, "%d %d\n", IMG_WIDTH, IMG_HEIGHT);
+        scan_result = $fscanf(in_file, "%d\n", max_val);
+        
+        $display("Reading PGM image:");
+        $display("  Format: P2 (ASCII PGM)");
+        $display("  Dimensions: %0d x %0d", IMG_WIDTH, IMG_HEIGHT);
+        $display("  Max value: %0d", max_val);
+        
+        if (IMG_WIDTH > MAX_SIZE || IMG_HEIGHT > MAX_SIZE) begin
+            $display("ERROR: Image too large! Max size is %0d x %0d", MAX_SIZE, MAX_SIZE);
+            $fclose(in_file);
+            $finish;
+        end
+        
+        // Read pixel data
+        for (i = 0; i < IMG_HEIGHT * IMG_WIDTH; i = i + 1) begin
+            scan_result = $fscanf(in_file, "%d", input_image[i]);
         end
         $fclose(in_file);
         
-        // Reset
+        $display("Image loaded successfully!");
+        
+        // Reset and start
         #20 rst_n = 1;
         #10 start = 1;
         #10 start = 0;
         
         // Feed input pixels
-        for (i = 0; i < IMG_HEIGHT; i = i + 1) begin
-            for (j = 0; j < IMG_WIDTH; j = j + 1) begin
-                @(posedge clk);
-                pixel_in = input_image[i][j];
-            end
+        for (i = 0; i < IMG_HEIGHT * IMG_WIDTH; i = i + 1) begin
+            @(posedge clk);
+            pixel_in = input_image[i];
         end
         
         // Wait for processing and collect output
@@ -92,19 +113,22 @@ module sobel_tb;
                 wait(done);
                 #100;
                 
-                // Save output image
-                out_file = $fopen("output_image.txt", "w");
-                for (i = 0; i < IMG_HEIGHT-2; i = i + 1) begin
-                    for (j = 0; j < IMG_WIDTH-2; j = j + 1) begin
-                        $fwrite(out_file, "%3d ", output_image[i][j]);
-                    end
-                    $fwrite(out_file, "\n");
+                // Save output as PGM
+                out_file = $fopen("output_image.pgm", "w");
+                $fwrite(out_file, "P2\n");
+                $fwrite(out_file, "%0d %0d\n", IMG_WIDTH-2, IMG_HEIGHT-2);
+                $fwrite(out_file, "255\n");
+                
+                for (i = 0; i < (IMG_HEIGHT-2) * (IMG_WIDTH-2); i = i + 1) begin
+                    $fwrite(out_file, "%0d ", output_image[i]);
+                    if ((i + 1) % (IMG_WIDTH-2) == 0)
+                        $fwrite(out_file, "\n");
                 end
                 $fclose(out_file);
                 
                 $display("Sobel filter complete!");
-                $display("Input saved to: input_image.txt");
-                $display("Output saved to: output_image.txt");
+                $display("Output saved to: output_image.pgm");
+                $display("Output dimensions: %0d x %0d", IMG_WIDTH-2, IMG_HEIGHT-2);
                 $finish;
             end
             
@@ -112,13 +136,8 @@ module sobel_tb;
                 forever begin
                     @(posedge clk);
                     if (valid_out) begin
-                        output_image[out_i][out_j] = pixel_out;
-                        if (out_j == IMG_WIDTH - 3) begin
-                            out_j = 0;
-                            out_i = out_i + 1;
-                        end else begin
-                            out_j = out_j + 1;
-                        end
+                        output_image[out_idx] = pixel_out;
+                        out_idx = out_idx + 1;
                     end
                 end
             end
@@ -127,7 +146,7 @@ module sobel_tb;
     
     // Timeout watchdog
     initial begin
-        #1000000;
+        #10000000;
         $display("ERROR: Timeout!");
         $finish;
     end
