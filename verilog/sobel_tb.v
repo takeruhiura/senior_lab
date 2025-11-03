@@ -107,33 +107,11 @@ module sobel_tb;
             pixel_in = input_image[i];
         end
         
-        // Wait for processing and collect output
+        // Collect output in parallel
         fork
+            // Process to collect output pixels
             begin
-                wait(done);
-                #100;
-                
-                // Save output as PGM
-                out_file = $fopen("output_image.pgm", "w");
-                $fwrite(out_file, "P2\n");
-                $fwrite(out_file, "%0d %0d\n", IMG_WIDTH-2, IMG_HEIGHT-2);
-                $fwrite(out_file, "255\n");
-                
-                for (i = 0; i < (IMG_HEIGHT-2) * (IMG_WIDTH-2); i = i + 1) begin
-                    $fwrite(out_file, "%0d ", output_image[i]);
-                    if ((i + 1) % (IMG_WIDTH-2) == 0)
-                        $fwrite(out_file, "\n");
-                end
-                $fclose(out_file);
-                
-                $display("Sobel filter complete!");
-                $display("Output saved to: output_image.pgm");
-                $display("Output dimensions: %0d x %0d", IMG_WIDTH-2, IMG_HEIGHT-2);
-                $finish;
-            end
-            
-            begin
-                forever begin
+                while (!done) begin
                     @(posedge clk);
                     if (valid_out) begin
                         output_image[out_idx] = pixel_out;
@@ -141,7 +119,28 @@ module sobel_tb;
                     end
                 end
             end
-        join_any
+        join
+        
+        // Wait a bit after done
+        #100;
+        
+        // Save output as PGM
+        out_file = $fopen("output_image.pgm", "w");
+        $fwrite(out_file, "P2\n");
+        $fwrite(out_file, "%0d %0d\n", IMG_WIDTH-2, IMG_HEIGHT-2);
+        $fwrite(out_file, "255\n");
+        
+        for (i = 0; i < (IMG_HEIGHT-2) * (IMG_WIDTH-2); i = i + 1) begin
+            $fwrite(out_file, "%0d ", output_image[i]);
+            if ((i + 1) % (IMG_WIDTH-2) == 0)
+                $fwrite(out_file, "\n");
+        end
+        $fclose(out_file);
+        
+        $display("Sobel filter complete!");
+        $display("Output saved to: output_image.pgm");
+        $display("Output dimensions: %0d x %0d", IMG_WIDTH-2, IMG_HEIGHT-2);
+        $finish;
     end
     
     // Timeout watchdog
