@@ -1,4 +1,4 @@
-// Top module for I2C LCD 20x4 display
+// I2C Scanner + LCD Controller - Auto-detects LCD address
 module lcd_i2c_top (
     input wire clk,           // 100MHz clock
     input wire rst,           // Reset button
@@ -7,15 +7,24 @@ module lcd_i2c_top (
     output wire [15:0] led    // Debug LEDs
 );
 
-    // I2C LCD address
-    localparam I2C_ADDR = 7'h3F;
+    // Common I2C LCD addresses to scan
+    reg [6:0] test_addresses [0:2];
+    initial begin
+        test_addresses[0] = 7'h20;  // 0x20
+        test_addresses[1] = 7'h27;  // 0x27
+        test_addresses[2] = 7'h3F;  // 0x3F
+    end
+    
+    reg [6:0] detected_addr;
+    reg addr_found;
     
     // State machine
-    localparam IDLE = 0, INIT = 1, WRITE = 2, DONE = 3;
+    localparam SCAN = 0, INIT = 1, WRITE = 2, DONE = 3;
     reg [1:0] state;
     reg [31:0] delay_cnt;
     reg [7:0] cmd_idx;
     reg [7:0] char_idx;
+    reg [1:0] scan_idx;
     
     // I2C control
     reg i2c_ena;
@@ -24,77 +33,125 @@ module lcd_i2c_top (
     wire i2c_ack_error;
     reg prev_busy;
     
-    // LCD data to send via I2C (includes enable pulses)
+    // LCD data to send via I2C
     reg [7:0] lcd_byte;
     reg [3:0] lcd_step;
-    reg lcd_rs;  // 0=command, 1=data
+    reg lcd_rs;
     
-    // Message: "Hello from FPGA!" on line 1, "Nexys 4 DDR" on line 2
+    // Message
     reg [7:0] message [0:31];
     initial begin
         message[0]="H"; message[1]="e"; message[2]="l"; message[3]="l";
         message[4]="o"; message[5]=" "; message[6]="f"; message[7]="r";
         message[8]="o"; message[9]="m"; message[10]=" "; message[11]="F";
         message[12]="P"; message[13]="G"; message[14]="A"; message[15]="!";
-        message[16]="N"; message[17]="e"; message[18]="x"; message[19]="y";
-        message[20]="s"; message[21]=" "; message[22]="4"; message[23]=" ";
-        message[24]="D"; message[25]="D"; message[26]="R"; message[27]=" ";
+        message[16]="A"; message[17]="d"; message[18]="d"; message[19]="r";
+        message[20]=":"; message[21]=" "; message[22]="0"; message[23]="x";
+        message[24]="?"; message[25]="?"; message[26]=" "; message[27]=" ";
         message[28]=" "; message[29]=" "; message[30]=" "; message[31]=" ";
     end
     
     // Init commands
     reg [7:0] init_cmd [0:6];
     initial begin
-        init_cmd[0] = 8'h33; // Initialize
-        init_cmd[1] = 8'h32; // 4-bit mode
-        init_cmd[2] = 8'h28; // 2 line, 5x8
-        init_cmd[3] = 8'h0C; // Display on, cursor off
-        init_cmd[4] = 8'h06; // Entry mode
-        init_cmd[5] = 8'h01; // Clear
-        init_cmd[6] = 8'h80; // Line 1
+        init_cmd[0] = 8'h33; init_cmd[1] = 8'h32; init_cmd[2] = 8'h28;
+        init_cmd[3] = 8'h0C; init_cmd[4] = 8'h06; init_cmd[5] = 8'h01;
+        init_cmd[6] = 8'h80;
     end
     
-    // Debug LEDs
+    // Debug LEDs - SHOWS ADDRESS DETECTION
     assign led[1:0] = state;
-    assign led[5:2] = lcd_step;
-    assign led[6] = i2c_ena;
-    assign led[7] = prev_busy;
-    assign led[8] = i2c_busy;
-    assign led[9] = i2c_ack_error;
-    assign led[15:10] = cmd_idx[5:0];
+    assign led[3:2] = scan_idx;
+    assign led[4] = addr_found;
+    assign led[11:5] = detected_addr;  // Shows detected I2C address
+    assign led[12] = i2c_ena;
+    assign led[13] = prev_busy;
+    assign led[14] = i2c_busy;
+    assign led[15] = i2c_ack_error;
     
-    // Detect I2C transaction complete
     wire i2c_done = prev_busy & ~i2c_busy;
     
-    // Main FSM
+    // Convert address to ASCII hex for display
+    function [7:0] hex_to_ascii;
+        input [3:0] hex;
+        begin
+            hex_to_ascii = (hex < 10) ? (8'h30 + hex) : (8'h37 + hex);
+        end
+    endfunction
+    
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            state <= IDLE;
+            state <= SCAN;
             delay_cnt <= 0;
             cmd_idx <= 0;
             char_idx <= 0;
+            scan_idx <= 0;
             i2c_ena <= 0;
             lcd_step <= 0;
             prev_busy <= 0;
             lcd_rs <= 0;
+            addr_found <= 0;
+            detected_addr <= 0;
         end else begin
             prev_busy <= i2c_busy;
             
             case (state)
-                IDLE: begin
-                    if (delay_cnt < 100_000_000) // 1s startup delay
-                        delay_cnt <= delay_cnt + 1;
-                    else begin
-                        state <= INIT;
-                        delay_cnt <= 0;
-                        lcd_step <= 0;
-                        cmd_idx <= 0;
-                    end
+                SCAN: begin
+                    case (lcd_step)
+                        0: begin // Initial delay
+                            if (delay_cnt < 50_000_000) // 500ms
+                                delay_cnt <= delay_cnt + 1;
+                            else begin
+                                delay_cnt <= 0;
+                                lcd_step <= 1;
+                            end
+                        end
+                        
+                        1: begin // Send test byte to current address
+                            if (!i2c_busy && !i2c_ena) begin
+                                i2c_data_wr <= 8'h00;
+                                i2c_ena <= 1;
+                                lcd_step <= 2;
+                            end
+                        end
+                        
+                        2: begin // Wait for I2C transaction
+                            if (i2c_busy) i2c_ena <= 0;
+                            if (i2c_done) lcd_step <= 3;
+                        end
+                        
+                        3: begin // Check if ACK received
+                            if (delay_cnt < 10_000_000) // 100ms delay
+                                delay_cnt <= delay_cnt + 1;
+                            else begin
+                                delay_cnt <= 0;
+                                if (!i2c_ack_error) begin
+                                    // Found it!
+                                    addr_found <= 1;
+                                    detected_addr <= test_addresses[scan_idx];
+                                    // Update message with hex address
+                                    message[24] <= hex_to_ascii(test_addresses[scan_idx][7:4]);
+                                    message[25] <= hex_to_ascii(test_addresses[scan_idx][3:0]);
+                                    state <= INIT;
+                                    lcd_step <= 0;
+                                    cmd_idx <= 0;
+                                end else if (scan_idx < 2) begin
+                                    // Try next address
+                                    scan_idx <= scan_idx + 1;
+                                    lcd_step <= 1;
+                                end else begin
+                                    // No device found - blink LEDs
+                                    state <= DONE;
+                                    lcd_step <= 0;
+                                end
+                            end
+                        end
+                    endcase
                 end
                 
                 INIT: begin
                     case (lcd_step)
-                        0: begin // Load command
+                        0: begin
                             if (cmd_idx < 7) begin
                                 lcd_byte <= init_cmd[cmd_idx];
                                 lcd_rs <= 0;
@@ -107,87 +164,7 @@ module lcd_i2c_top (
                             end
                         end
                         
-                        1: begin // Send high nibble, EN high
-                            if (!i2c_busy && !i2c_ena) begin
-                                i2c_data_wr <= {lcd_byte[7:4], 1'b1, 1'b1, 1'b0, lcd_rs}; // BL=1, EN=1
-                                i2c_ena <= 1;
-                                lcd_step <= 2;
-                            end
-                        end
-                        
-                        2: begin // Wait for I2C complete
-                            if (i2c_busy) i2c_ena <= 0;
-                            if (i2c_done) lcd_step <= 3;
-                        end
-                        
-                        3: begin // Send high nibble, EN low
-                            if (!i2c_busy && !i2c_ena) begin
-                                i2c_data_wr <= {lcd_byte[7:4], 1'b1, 1'b0, 1'b0, lcd_rs}; // BL=1, EN=0
-                                i2c_ena <= 1;
-                                lcd_step <= 4;
-                            end
-                        end
-                        
-                        4: begin // Wait for I2C complete
-                            if (i2c_busy) i2c_ena <= 0;
-                            if (i2c_done) lcd_step <= 5;
-                        end
-                        
-                        5: begin // Send low nibble, EN high
-                            if (!i2c_busy && !i2c_ena) begin
-                                i2c_data_wr <= {lcd_byte[3:0], 1'b1, 1'b1, 1'b0, lcd_rs}; // BL=1, EN=1
-                                i2c_ena <= 1;
-                                lcd_step <= 6;
-                            end
-                        end
-                        
-                        6: begin // Wait for I2C complete
-                            if (i2c_busy) i2c_ena <= 0;
-                            if (i2c_done) lcd_step <= 7;
-                        end
-                        
-                        7: begin // Send low nibble, EN low
-                            if (!i2c_busy && !i2c_ena) begin
-                                i2c_data_wr <= {lcd_byte[3:0], 1'b1, 1'b0, 1'b0, lcd_rs}; // BL=1, EN=0
-                                i2c_ena <= 1;
-                                lcd_step <= 8;
-                            end
-                        end
-                        
-                        8: begin // Wait and delay
-                            if (i2c_busy) i2c_ena <= 0;
-                            if (i2c_done) lcd_step <= 9;
-                        end
-                        
-                        9: begin // Delay between commands
-                            if (delay_cnt < 500_000) // 5ms
-                                delay_cnt <= delay_cnt + 1;
-                            else begin
-                                delay_cnt <= 0;
-                                cmd_idx <= cmd_idx + 1;
-                                lcd_step <= 0;
-                            end
-                        end
-                    endcase
-                end
-                
-                WRITE: begin
-                    case (lcd_step)
-                        0: begin // Load character or command
-                            if (char_idx == 16) begin
-                                lcd_byte <= 8'hC0; // Move to line 2
-                                lcd_rs <= 0;
-                                lcd_step <= 1;
-                            end else if (char_idx < 32) begin
-                                lcd_byte <= message[char_idx];
-                                lcd_rs <= 1;
-                                lcd_step <= 1;
-                            end else begin
-                                state <= DONE;
-                            end
-                        end
-                        
-                        1: begin // Send high nibble, EN high
+                        1: begin
                             if (!i2c_busy && !i2c_ena) begin
                                 i2c_data_wr <= {lcd_byte[7:4], 1'b1, 1'b1, 1'b0, lcd_rs};
                                 i2c_ena <= 1;
@@ -200,7 +177,7 @@ module lcd_i2c_top (
                             if (i2c_done) lcd_step <= 3;
                         end
                         
-                        3: begin // Send high nibble, EN low
+                        3: begin
                             if (!i2c_busy && !i2c_ena) begin
                                 i2c_data_wr <= {lcd_byte[7:4], 1'b1, 1'b0, 1'b0, lcd_rs};
                                 i2c_ena <= 1;
@@ -213,7 +190,7 @@ module lcd_i2c_top (
                             if (i2c_done) lcd_step <= 5;
                         end
                         
-                        5: begin // Send low nibble, EN high
+                        5: begin
                             if (!i2c_busy && !i2c_ena) begin
                                 i2c_data_wr <= {lcd_byte[3:0], 1'b1, 1'b1, 1'b0, lcd_rs};
                                 i2c_ena <= 1;
@@ -226,7 +203,87 @@ module lcd_i2c_top (
                             if (i2c_done) lcd_step <= 7;
                         end
                         
-                        7: begin // Send low nibble, EN low
+                        7: begin
+                            if (!i2c_busy && !i2c_ena) begin
+                                i2c_data_wr <= {lcd_byte[3:0], 1'b1, 1'b0, 1'b0, lcd_rs};
+                                i2c_ena <= 1;
+                                lcd_step <= 8;
+                            end
+                        end
+                        
+                        8: begin
+                            if (i2c_busy) i2c_ena <= 0;
+                            if (i2c_done) lcd_step <= 9;
+                        end
+                        
+                        9: begin
+                            if (delay_cnt < 500_000)
+                                delay_cnt <= delay_cnt + 1;
+                            else begin
+                                delay_cnt <= 0;
+                                cmd_idx <= cmd_idx + 1;
+                                lcd_step <= 0;
+                            end
+                        end
+                    endcase
+                end
+                
+                WRITE: begin
+                    case (lcd_step)
+                        0: begin
+                            if (char_idx == 16) begin
+                                lcd_byte <= 8'hC0;
+                                lcd_rs <= 0;
+                                lcd_step <= 1;
+                            end else if (char_idx < 32) begin
+                                lcd_byte <= message[char_idx];
+                                lcd_rs <= 1;
+                                lcd_step <= 1;
+                            end else begin
+                                state <= DONE;
+                            end
+                        end
+                        
+                        1: begin
+                            if (!i2c_busy && !i2c_ena) begin
+                                i2c_data_wr <= {lcd_byte[7:4], 1'b1, 1'b1, 1'b0, lcd_rs};
+                                i2c_ena <= 1;
+                                lcd_step <= 2;
+                            end
+                        end
+                        
+                        2: begin
+                            if (i2c_busy) i2c_ena <= 0;
+                            if (i2c_done) lcd_step <= 3;
+                        end
+                        
+                        3: begin
+                            if (!i2c_busy && !i2c_ena) begin
+                                i2c_data_wr <= {lcd_byte[7:4], 1'b1, 1'b0, 1'b0, lcd_rs};
+                                i2c_ena <= 1;
+                                lcd_step <= 4;
+                            end
+                        end
+                        
+                        4: begin
+                            if (i2c_busy) i2c_ena <= 0;
+                            if (i2c_done) lcd_step <= 5;
+                        end
+                        
+                        5: begin
+                            if (!i2c_busy && !i2c_ena) begin
+                                i2c_data_wr <= {lcd_byte[3:0], 1'b1, 1'b1, 1'b0, lcd_rs};
+                                i2c_ena <= 1;
+                                lcd_step <= 6;
+                            end
+                        end
+                        
+                        6: begin
+                            if (i2c_busy) i2c_ena <= 0;
+                            if (i2c_done) lcd_step <= 7;
+                        end
+                        
+                        7: begin
                             if (!i2c_busy && !i2c_ena) begin
                                 i2c_data_wr <= {lcd_byte[3:0], 1'b1, 1'b0, 1'b0, lcd_rs};
                                 i2c_ena <= 1;
@@ -245,14 +302,19 @@ module lcd_i2c_top (
                 end
                 
                 DONE: begin
-                    i2c_ena <= 0;
-                    // Stay in DONE state
+                    // If address found, stay here. Otherwise blink error pattern
+                    if (!addr_found) begin
+                        if (delay_cnt < 50_000_000)
+                            delay_cnt <= delay_cnt + 1;
+                        else
+                            delay_cnt <= 0;
+                    end
                 end
             endcase
         end
     end
     
-    // I2C master instance
+    // I2C master with dynamic address
     i2c_master #(
         .input_clk(100_000_000), 
         .bus_clk(100_000)
@@ -260,7 +322,7 @@ module lcd_i2c_top (
         .clk(clk),
         .reset_n(~rst),
         .ena(i2c_ena),
-        .addr(I2C_ADDR),
+        .addr(addr_found ? detected_addr : test_addresses[scan_idx]),
         .rw(1'b0),
         .data_wr(i2c_data_wr),
         .busy(i2c_busy),
@@ -290,13 +352,8 @@ module i2c_master #(
 
     localparam divider = (input_clk/bus_clk)/4;
     
-    localparam READY = 0;
-    localparam START = 1;
-    localparam COMMAND = 2;
-    localparam SLV_ACK1 = 3;
-    localparam WR = 4;
-    localparam SLV_ACK2 = 5;
-    localparam STOP = 6;
+    localparam READY = 0, START = 1, COMMAND = 2, SLV_ACK1 = 3;
+    localparam WR = 4, SLV_ACK2 = 5, STOP = 6;
     
     reg [2:0] state;
     reg [15:0] count;
@@ -307,11 +364,12 @@ module i2c_master #(
     reg [7:0] addr_rw;
     reg [7:0] data_tx;
     reg [2:0] bit_cnt;
+    wire sda_in;
     
     assign scl = (scl_ena == 1'b0) ? 1'b1 : scl_clk;
     assign sda = (sda_ena_n == 1'b0) ? sda_int : 1'bz;
+    assign sda_in = sda;
     
-    // Generate SCL clock
     always @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin
             count <= 0;
@@ -326,7 +384,6 @@ module i2c_master #(
         end
     end
     
-    // I2C state machine
     always @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin
             state <= READY;
@@ -373,6 +430,7 @@ module i2c_master #(
                     
                     SLV_ACK1: begin
                         sda_ena_n <= 1'b1;
+                        ack_error <= sda_in;  // If high, no ACK
                         if (rw == 1'b0) begin
                             state <= WR;
                         end else begin
