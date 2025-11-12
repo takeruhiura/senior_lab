@@ -11,9 +11,11 @@ module lcd_test_top(
     
     wire sda_out, sda_en;
     wire [7:0] state_debug;
+    wire scl_out;
     
     // Tri-state SDA
     assign sda = sda_en ? sda_out : 1'bz;
+    assign scl = scl_out;
     
     // Debug LEDs show state
     assign led = {8'h00, state_debug};
@@ -23,7 +25,7 @@ module lcd_test_top(
     ) lcd (
         .clk(clk),
         .rst(rst),
-        .scl(scl),
+        .scl(scl_out),
         .sda_out(sda_out),
         .sda_in(sda),
         .sda_en(sda_en),
@@ -84,8 +86,6 @@ module i2c_lcd_2004 #(
         text_mem[24] = "C"; text_mem[25] = " "; text_mem[26] = "L"; text_mem[27] = "C";
         text_mem[28] = "D"; text_mem[29] = " "; text_mem[30] = "2"; text_mem[31] = "0";
     end
-    
-    assign state_debug = state;
     
     // I2C master module instance
     i2c_master i2c (
