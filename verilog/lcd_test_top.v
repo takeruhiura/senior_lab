@@ -1,5 +1,5 @@
 // Top module for I2C LCD 20x4 display
-module lcd_test_top (
+module lcd_i2c_top (
     input wire clk,           // 100MHz clock
     input wire rst,           // Reset button
     inout wire sda,           // I2C data line
@@ -21,6 +21,7 @@ module lcd_test_top (
     reg i2c_ena;
     reg [7:0] i2c_data_wr;
     wire i2c_busy;
+    wire i2c_ack_error;
     reg prev_busy;
     
     // LCD data to send via I2C (includes enable pulses)
@@ -55,9 +56,12 @@ module lcd_test_top (
     
     // Debug LEDs
     assign led[1:0] = state;
-    assign led[9:2] = cmd_idx;
-    assign led[10] = i2c_busy;
-    assign led[15:11] = char_idx[4:0];
+    assign led[5:2] = lcd_step;
+    assign led[6] = i2c_ena;
+    assign led[7] = prev_busy;
+    assign led[8] = i2c_busy;
+    assign led[9] = i2c_ack_error;
+    assign led[15:10] = cmd_idx[5:0];
     
     // Detect I2C transaction complete
     wire i2c_done = prev_busy & ~i2c_busy;
@@ -72,6 +76,7 @@ module lcd_test_top (
             i2c_ena <= 0;
             lcd_step <= 0;
             prev_busy <= 0;
+            lcd_rs <= 0;
         end else begin
             prev_busy <= i2c_busy;
             
@@ -82,100 +87,184 @@ module lcd_test_top (
                     else begin
                         state <= INIT;
                         delay_cnt <= 0;
+                        lcd_step <= 0;
+                        cmd_idx <= 0;
                     end
                 end
                 
                 INIT: begin
-                    if (lcd_step == 0) begin
-                        if (cmd_idx < 7) begin
-                            lcd_byte <= init_cmd[cmd_idx];
-                            lcd_rs <= 0;
-                            lcd_step <= 1;
-                        end else begin
-                            state <= WRITE;
-                            cmd_idx <= 0;
-                            lcd_step <= 0;
+                    case (lcd_step)
+                        0: begin // Load command
+                            if (cmd_idx < 7) begin
+                                lcd_byte <= init_cmd[cmd_idx];
+                                lcd_rs <= 0;
+                                lcd_step <= 1;
+                            end else begin
+                                state <= WRITE;
+                                cmd_idx <= 0;
+                                char_idx <= 0;
+                                lcd_step <= 0;
+                            end
                         end
-                    end else if (lcd_step <= 8 && !i2c_busy) begin
-                        send_lcd_nibble();
-                        if (i2c_done) lcd_step <= lcd_step + 1;
-                    end else if (i2c_done) begin
-                        if (delay_cnt < 5_000_000) // 50ms delay
-                            delay_cnt <= delay_cnt + 1;
-                        else begin
-                            delay_cnt <= 0;
-                            cmd_idx <= cmd_idx + 1;
-                            lcd_step <= 0;
+                        
+                        1: begin // Send high nibble, EN high
+                            if (!i2c_busy && !i2c_ena) begin
+                                i2c_data_wr <= {lcd_byte[7:4], 1'b1, 1'b1, 1'b0, lcd_rs}; // BL=1, EN=1
+                                i2c_ena <= 1;
+                                lcd_step <= 2;
+                            end
                         end
-                    end
+                        
+                        2: begin // Wait for I2C complete
+                            if (i2c_busy) i2c_ena <= 0;
+                            if (i2c_done) lcd_step <= 3;
+                        end
+                        
+                        3: begin // Send high nibble, EN low
+                            if (!i2c_busy && !i2c_ena) begin
+                                i2c_data_wr <= {lcd_byte[7:4], 1'b1, 1'b0, 1'b0, lcd_rs}; // BL=1, EN=0
+                                i2c_ena <= 1;
+                                lcd_step <= 4;
+                            end
+                        end
+                        
+                        4: begin // Wait for I2C complete
+                            if (i2c_busy) i2c_ena <= 0;
+                            if (i2c_done) lcd_step <= 5;
+                        end
+                        
+                        5: begin // Send low nibble, EN high
+                            if (!i2c_busy && !i2c_ena) begin
+                                i2c_data_wr <= {lcd_byte[3:0], 1'b1, 1'b1, 1'b0, lcd_rs}; // BL=1, EN=1
+                                i2c_ena <= 1;
+                                lcd_step <= 6;
+                            end
+                        end
+                        
+                        6: begin // Wait for I2C complete
+                            if (i2c_busy) i2c_ena <= 0;
+                            if (i2c_done) lcd_step <= 7;
+                        end
+                        
+                        7: begin // Send low nibble, EN low
+                            if (!i2c_busy && !i2c_ena) begin
+                                i2c_data_wr <= {lcd_byte[3:0], 1'b1, 1'b0, 1'b0, lcd_rs}; // BL=1, EN=0
+                                i2c_ena <= 1;
+                                lcd_step <= 8;
+                            end
+                        end
+                        
+                        8: begin // Wait and delay
+                            if (i2c_busy) i2c_ena <= 0;
+                            if (i2c_done) lcd_step <= 9;
+                        end
+                        
+                        9: begin // Delay between commands
+                            if (delay_cnt < 500_000) // 5ms
+                                delay_cnt <= delay_cnt + 1;
+                            else begin
+                                delay_cnt <= 0;
+                                cmd_idx <= cmd_idx + 1;
+                                lcd_step <= 0;
+                            end
+                        end
+                    endcase
                 end
                 
                 WRITE: begin
-                    if (lcd_step == 0) begin
-                        if (char_idx == 16) begin
-                            lcd_byte <= 8'hC0; // Move to line 2
-                            lcd_rs <= 0;
-                            lcd_step <= 1;
-                        end else if (char_idx < 32) begin
-                            lcd_byte <= message[char_idx];
-                            lcd_rs <= 1;
-                            lcd_step <= 1;
-                        end else begin
-                            state <= DONE;
+                    case (lcd_step)
+                        0: begin // Load character or command
+                            if (char_idx == 16) begin
+                                lcd_byte <= 8'hC0; // Move to line 2
+                                lcd_rs <= 0;
+                                lcd_step <= 1;
+                            end else if (char_idx < 32) begin
+                                lcd_byte <= message[char_idx];
+                                lcd_rs <= 1;
+                                lcd_step <= 1;
+                            end else begin
+                                state <= DONE;
+                            end
                         end
-                    end else if (lcd_step <= 8 && !i2c_busy) begin
-                        send_lcd_nibble();
-                        if (i2c_done) lcd_step <= lcd_step + 1;
-                    end else if (i2c_done) begin
-                        char_idx <= char_idx + 1;
-                        lcd_step <= 0;
-                    end
+                        
+                        1: begin // Send high nibble, EN high
+                            if (!i2c_busy && !i2c_ena) begin
+                                i2c_data_wr <= {lcd_byte[7:4], 1'b1, 1'b1, 1'b0, lcd_rs};
+                                i2c_ena <= 1;
+                                lcd_step <= 2;
+                            end
+                        end
+                        
+                        2: begin
+                            if (i2c_busy) i2c_ena <= 0;
+                            if (i2c_done) lcd_step <= 3;
+                        end
+                        
+                        3: begin // Send high nibble, EN low
+                            if (!i2c_busy && !i2c_ena) begin
+                                i2c_data_wr <= {lcd_byte[7:4], 1'b1, 1'b0, 1'b0, lcd_rs};
+                                i2c_ena <= 1;
+                                lcd_step <= 4;
+                            end
+                        end
+                        
+                        4: begin
+                            if (i2c_busy) i2c_ena <= 0;
+                            if (i2c_done) lcd_step <= 5;
+                        end
+                        
+                        5: begin // Send low nibble, EN high
+                            if (!i2c_busy && !i2c_ena) begin
+                                i2c_data_wr <= {lcd_byte[3:0], 1'b1, 1'b1, 1'b0, lcd_rs};
+                                i2c_ena <= 1;
+                                lcd_step <= 6;
+                            end
+                        end
+                        
+                        6: begin
+                            if (i2c_busy) i2c_ena <= 0;
+                            if (i2c_done) lcd_step <= 7;
+                        end
+                        
+                        7: begin // Send low nibble, EN low
+                            if (!i2c_busy && !i2c_ena) begin
+                                i2c_data_wr <= {lcd_byte[3:0], 1'b1, 1'b0, 1'b0, lcd_rs};
+                                i2c_ena <= 1;
+                                lcd_step <= 8;
+                            end
+                        end
+                        
+                        8: begin
+                            if (i2c_busy) i2c_ena <= 0;
+                            if (i2c_done) begin
+                                char_idx <= char_idx + 1;
+                                lcd_step <= 0;
+                            end
+                        end
+                    endcase
                 end
                 
                 DONE: begin
                     i2c_ena <= 0;
+                    // Stay in DONE state
                 end
             endcase
         end
     end
     
-    // Send LCD nibble via I2C
-    task send_lcd_nibble;
-        begin
-            case (lcd_step)
-                1: begin // High nibble, EN=1, BL=1
-                    i2c_data_wr <= {lcd_byte[7:4], 3'b001, lcd_rs};
-                    i2c_ena <= 1;
-                end
-                2: begin // High nibble, EN=0, BL=1
-                    i2c_data_wr <= {lcd_byte[7:4], 3'b000, lcd_rs};
-                    i2c_ena <= 1;
-                end
-                3: i2c_ena <= 0;
-                4: i2c_ena <= 0;
-                5: begin // Low nibble, EN=1, BL=1
-                    i2c_data_wr <= {lcd_byte[3:0], 3'b001, lcd_rs};
-                    i2c_ena <= 1;
-                end
-                6: begin // Low nibble, EN=0, BL=1
-                    i2c_data_wr <= {lcd_byte[3:0], 3'b000, lcd_rs};
-                    i2c_ena <= 1;
-                end
-                7: i2c_ena <= 0;
-                8: i2c_ena <= 0;
-            endcase
-        end
-    endtask
-    
     // I2C master instance
-    i2c_master #(.input_clk(100_000_000), .bus_clk(100_000)) i2c (
+    i2c_master #(
+        .input_clk(100_000_000), 
+        .bus_clk(100_000)
+    ) i2c (
         .clk(clk),
         .reset_n(~rst),
         .ena(i2c_ena),
         .addr(I2C_ADDR),
-        .rw(1'b0),  // Write only
+        .rw(1'b0),
         .data_wr(i2c_data_wr),
         .busy(i2c_busy),
+        .ack_error(i2c_ack_error),
         .sda(sda),
         .scl(scl)
     );
@@ -194,29 +283,39 @@ module i2c_master #(
     input rw,
     input [7:0] data_wr,
     output reg busy,
+    output reg ack_error,
     inout sda,
     output scl
 );
 
     localparam divider = (input_clk/bus_clk)/4;
     
-    reg [7:0] state;
+    localparam READY = 0;
+    localparam START = 1;
+    localparam COMMAND = 2;
+    localparam SLV_ACK1 = 3;
+    localparam WR = 4;
+    localparam SLV_ACK2 = 5;
+    localparam STOP = 6;
+    
+    reg [2:0] state;
     reg [15:0] count;
     reg scl_clk;
     reg scl_ena;
     reg sda_int;
+    reg sda_ena_n;
     reg [7:0] addr_rw;
     reg [7:0] data_tx;
     reg [2:0] bit_cnt;
     
     assign scl = (scl_ena == 1'b0) ? 1'b1 : scl_clk;
-    assign sda = (sda_int == 1'b1) ? 1'bz : 1'b0;
+    assign sda = (sda_ena_n == 1'b0) ? sda_int : 1'bz;
     
-    // Generate SCL
+    // Generate SCL clock
     always @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin
             count <= 0;
-            scl_clk <= 1;
+            scl_clk <= 1'b1;
         end else begin
             if (count == divider - 1) begin
                 count <= 0;
@@ -227,75 +326,82 @@ module i2c_master #(
         end
     end
     
-    // State machine
+    // I2C state machine
     always @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin
-            state <= 0;
+            state <= READY;
             busy <= 1'b0;
             scl_ena <= 1'b0;
             sda_int <= 1'b1;
+            sda_ena_n <= 1'b1;
+            ack_error <= 1'b0;
             bit_cnt <= 7;
         end else begin
             if (count == divider - 1) begin
                 case (state)
-                    0: begin // Idle
+                    READY: begin
                         if (ena) begin
                             busy <= 1'b1;
                             addr_rw <= {addr, rw};
                             data_tx <= data_wr;
-                            state <= 1;
+                            state <= START;
                         end else begin
                             busy <= 1'b0;
                             scl_ena <= 1'b0;
                         end
                     end
-                    1: begin // Start
+                    
+                    START: begin
+                        busy <= 1'b1;
                         scl_ena <= 1'b1;
+                        sda_ena_n <= 1'b0;
                         sda_int <= 1'b0;
-                        state <= 2;
+                        ack_error <= 1'b0;
+                        state <= COMMAND;
+                        bit_cnt <= 7;
                     end
-                    2: begin // Address
+                    
+                    COMMAND: begin
                         sda_int <= addr_rw[bit_cnt];
-                        state <= 3;
-                    end
-                    3: begin
                         if (bit_cnt == 0) begin
                             bit_cnt <= 7;
-                            state <= 4;
+                            state <= SLV_ACK1;
                         end else begin
                             bit_cnt <= bit_cnt - 1;
-                            state <= 2;
                         end
                     end
-                    4: begin // ACK from slave
-                        sda_int <= 1'b1;
-                        state <= 5;
+                    
+                    SLV_ACK1: begin
+                        sda_ena_n <= 1'b1;
+                        if (rw == 1'b0) begin
+                            state <= WR;
+                        end else begin
+                            state <= STOP;
+                        end
                     end
-                    5: begin // Write data
+                    
+                    WR: begin
+                        busy <= 1'b1;
+                        sda_ena_n <= 1'b0;
                         sda_int <= data_tx[bit_cnt];
-                        state <= 6;
-                    end
-                    6: begin
                         if (bit_cnt == 0) begin
                             bit_cnt <= 7;
-                            state <= 7;
+                            state <= SLV_ACK2;
                         end else begin
                             bit_cnt <= bit_cnt - 1;
-                            state <= 5;
                         end
                     end
-                    7: begin // ACK from slave
-                        sda_int <= 1'b1;
-                        state <= 8;
+                    
+                    SLV_ACK2: begin
+                        sda_ena_n <= 1'b1;
+                        state <= STOP;
                     end
-                    8: begin // Stop
-                        sda_int <= 1'b0;
-                        state <= 9;
-                    end
-                    9: begin
-                        sda_int <= 1'b1;
+                    
+                    STOP: begin
                         busy <= 1'b0;
-                        state <= 0;
+                        sda_ena_n <= 1'b0;
+                        sda_int <= 1'b1;
+                        state <= READY;
                     end
                 endcase
             end
