@@ -1,5 +1,5 @@
 // I2C Scanner + LCD Controller - Auto-detects LCD address
-module lcd_i2c_top (
+module lcd_test_top (
     input wire clk,           // 100MHz clock
     input wire rst,           // Reset button
     inout wire sda,           // I2C data line
@@ -7,15 +7,8 @@ module lcd_i2c_top (
     output wire [15:0] led    // Debug LEDs
 );
 
-    // Common I2C LCD addresses to scan
-    reg [6:0] test_addresses [0:2];
-    initial begin
-        test_addresses[0] = 7'h20;  // 0x20
-        test_addresses[1] = 7'h27;  // 0x27
-        test_addresses[2] = 7'h3F;  // 0x3F
-    end
-    
-    reg [6:0] detected_addr;
+    // I2C LCD address to use (will scan through these)
+    reg [6:0] current_addr;
     reg addr_found;
     
     // State machine
@@ -63,7 +56,7 @@ module lcd_i2c_top (
     assign led[1:0] = state;
     assign led[3:2] = scan_idx;
     assign led[4] = addr_found;
-    assign led[11:5] = detected_addr;  // Shows detected I2C address
+    assign led[11:5] = current_addr;  // Shows detected I2C address
     assign led[12] = i2c_ena;
     assign led[13] = prev_busy;
     assign led[14] = i2c_busy;
@@ -79,6 +72,19 @@ module lcd_i2c_top (
         end
     endfunction
     
+    // Get address based on scan index
+    function [6:0] get_scan_addr;
+        input [1:0] idx;
+        begin
+            case (idx)
+                2'd0: get_scan_addr = 7'h20;
+                2'd1: get_scan_addr = 7'h27;
+                2'd2: get_scan_addr = 7'h3F;
+                default: get_scan_addr = 7'h3F;
+            endcase
+        end
+    endfunction
+    
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             state <= SCAN;
@@ -91,7 +97,7 @@ module lcd_i2c_top (
             prev_busy <= 0;
             lcd_rs <= 0;
             addr_found <= 0;
-            detected_addr <= 0;
+            current_addr <= 7'h3F;
         end else begin
             prev_busy <= i2c_busy;
             
@@ -103,6 +109,7 @@ module lcd_i2c_top (
                                 delay_cnt <= delay_cnt + 1;
                             else begin
                                 delay_cnt <= 0;
+                                current_addr <= get_scan_addr(scan_idx);
                                 lcd_step <= 1;
                             end
                         end
@@ -128,17 +135,16 @@ module lcd_i2c_top (
                                 if (!i2c_ack_error) begin
                                     // Found it!
                                     addr_found <= 1;
-                                    detected_addr <= test_addresses[scan_idx];
                                     // Update message with hex address
-                                    message[24] <= hex_to_ascii(test_addresses[scan_idx][7:4]);
-                                    message[25] <= hex_to_ascii(test_addresses[scan_idx][3:0]);
+                                    message[24] <= hex_to_ascii(current_addr[7:4]);
+                                    message[25] <= hex_to_ascii(current_addr[3:0]);
                                     state <= INIT;
                                     lcd_step <= 0;
                                     cmd_idx <= 0;
                                 end else if (scan_idx < 2) begin
                                     // Try next address
                                     scan_idx <= scan_idx + 1;
-                                    lcd_step <= 1;
+                                    lcd_step <= 0;
                                 end else begin
                                     // No device found - blink LEDs
                                     state <= DONE;
@@ -322,7 +328,7 @@ module lcd_i2c_top (
         .clk(clk),
         .reset_n(~rst),
         .ena(i2c_ena),
-        .addr(addr_found ? detected_addr : test_addresses[scan_idx]),
+        .addr(current_addr),
         .rw(1'b0),
         .data_wr(i2c_data_wr),
         .busy(i2c_busy),
