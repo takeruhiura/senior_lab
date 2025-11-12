@@ -8,7 +8,7 @@ module lcd_test_top(
 
     // Try address 0x27 first, if doesn't work change to 0x3F
     // To change: modify the parameter below and re-synthesize
-    parameter I2C_ADDR = 7'h27;  // Common addresses: 0x27 or 0x3F
+    parameter I2C_ADDR = 7'3f;  // Common addresses: 0x27 or 0x3F
     // If LCD doesn't work, try: parameter I2C_ADDR = 7'h3F;
     
     wire sda_out, sda_en;
@@ -132,9 +132,11 @@ module i2c_lcd_2004 #(
             i2c_start <= 0;  // Default: don't start I2C
             
             // Timeout mechanism: if I2C takes too long, assume it failed and continue
-            if (i2c_busy && timeout_cnt < 1000000) begin  // 10ms timeout
-                timeout_cnt <= timeout_cnt + 1;
-            end else if (!i2c_busy) begin
+            if (i2c_busy) begin
+                if (timeout_cnt < 1000000) begin  // 10ms timeout
+                    timeout_cnt <= timeout_cnt + 1;
+                end
+            end else begin
                 timeout_cnt <= 0;
             end
             
@@ -180,8 +182,9 @@ module i2c_lcd_2004 #(
                 end
                 
                 CLEAR_E1: begin
-                    if ((i2c_done || timeout_cnt >= 1000000) && !i2c_busy) begin
-                        if (!i2c_done) begin
+                    if (i2c_done || (timeout_cnt >= 1000000)) begin
+                        // Clear E after high nibble (or timeout)
+                        if (timeout_cnt >= 1000000) begin
                             timeout_cnt <= 0;
                         end
                         // Clear E after high nibble
@@ -193,8 +196,8 @@ module i2c_lcd_2004 #(
                 end
                 
                 SEND_LOW_NIBBLE: begin
-                    if ((i2c_done || timeout_cnt >= 1000000) && !i2c_busy) begin
-                        if (!i2c_done) begin
+                    if (i2c_done || (timeout_cnt >= 1000000)) begin
+                        if (timeout_cnt >= 1000000) begin
                             timeout_cnt <= 0;
                         end
                         // Send low nibble with E=1
@@ -206,10 +209,9 @@ module i2c_lcd_2004 #(
                 end
                 
                 CLEAR_E2: begin
-                    if ((i2c_done || timeout_cnt >= 1000000) && !i2c_busy) begin
+                    if (i2c_done || (timeout_cnt >= 1000000)) begin
                         // Clear E after low nibble (or timeout)
-                        if (!i2c_done) begin
-                            // I2C failed, but continue anyway
+                        if (timeout_cnt >= 1000000) begin
                             timeout_cnt <= 0;
                         end
                         i2c_data <= {current_cmd[3:0], 1'b1, 1'b0, 1'b0, 1'b0};  // E=0
@@ -220,7 +222,7 @@ module i2c_lcd_2004 #(
                 end
                 
                 DELAY_STATE: begin
-                    if (i2c_done || timeout_cnt >= 1000000) begin
+                    if (i2c_done || (timeout_cnt >= 1000000)) begin
                         if (timeout_cnt >= 1000000) begin
                             // I2C timeout - assume transaction completed
                             timeout_cnt <= 0;
@@ -302,8 +304,8 @@ module i2c_lcd_2004 #(
                 end
                 
                 CLEAR_DE1: begin
-                    if ((i2c_done || timeout_cnt >= 1000000) && !i2c_busy) begin
-                        if (!i2c_done) begin
+                    if (i2c_done || (timeout_cnt >= 1000000)) begin
+                        if (timeout_cnt >= 1000000) begin
                             timeout_cnt <= 0;
                         end
                         // Clear E after high nibble of data
@@ -315,8 +317,8 @@ module i2c_lcd_2004 #(
                 end
                 
                 SEND_DATA_LOW: begin
-                    if ((i2c_done || timeout_cnt >= 1000000) && !i2c_busy) begin
-                        if (!i2c_done) begin
+                    if (i2c_done || (timeout_cnt >= 1000000)) begin
+                        if (timeout_cnt >= 1000000) begin
                             timeout_cnt <= 0;
                         end
                         // Send low nibble with E=1
@@ -328,8 +330,8 @@ module i2c_lcd_2004 #(
                 end
                 
                 CLEAR_DE2: begin
-                    if ((i2c_done || timeout_cnt >= 1000000) && !i2c_busy) begin
-                        if (!i2c_done) begin
+                    if (i2c_done || (timeout_cnt >= 1000000)) begin
+                        if (timeout_cnt >= 1000000) begin
                             timeout_cnt <= 0;
                         end
                         // Clear E after low nibble, data complete
