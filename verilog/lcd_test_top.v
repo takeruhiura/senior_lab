@@ -35,7 +35,7 @@ module lcd_test_top(
 endmodule
 
 module i2c_lcd_2004 #(
-    parameter I2C_ADDR = 7'h27
+    parameter I2C_ADDR = 7'h3F
 )(
     input wire clk,
     input wire rst,
@@ -356,6 +356,16 @@ module i2c_lcd_2004 #(
                         i2c_start <= 1;
                         timeout_cnt <= 0;
                     end
+                end
+                
+                default: begin
+                    // Invalid state - reset to INIT
+                    state <= INIT;
+                    delay_cnt <= 0;
+                    timeout_cnt <= 0;
+                    init_step <= 0;
+                    char_index <= 0;
+                    i2c_start <= 0;
                 end
             endcase
             
