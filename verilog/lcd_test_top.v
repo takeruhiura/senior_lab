@@ -59,6 +59,7 @@ module i2c_lcd_2004 #(
     
     reg [7:0] state;
     reg [31:0] delay_cnt;
+    reg [31:0] timeout_cnt;  // Timeout counter for I2C operations
     reg [7:0] init_step;
     reg [7:0] char_index;
     
@@ -120,6 +121,7 @@ module i2c_lcd_2004 #(
         if (rst) begin
             state <= INIT;
             delay_cnt <= 0;
+            timeout_cnt <= 0;
             init_step <= 0;
             char_index <= 0;
             i2c_start <= 0;
@@ -128,6 +130,13 @@ module i2c_lcd_2004 #(
             is_data_mode <= 0;
         end else begin
             i2c_start <= 0;  // Default: don't start I2C
+            
+            // Timeout mechanism: if I2C takes too long, assume it failed and continue
+            if (i2c_busy && timeout_cnt < 1000000) begin  // 10ms timeout
+                timeout_cnt <= timeout_cnt + 1;
+            end else if (!i2c_busy) begin
+                timeout_cnt <= 0;
+            end
             
             case (state)
                 INIT: begin
@@ -171,34 +180,51 @@ module i2c_lcd_2004 #(
                 end
                 
                 CLEAR_E1: begin
-                    if (i2c_done && !i2c_busy) begin
+                    if ((i2c_done || timeout_cnt >= 1000000) && !i2c_busy) begin
+                        if (!i2c_done) begin
+                            timeout_cnt <= 0;
+                        end
                         // Clear E after high nibble
                         i2c_data <= {current_cmd[7:4], 1'b1, 1'b0, 1'b0, 1'b0};  // E=0
                         i2c_start <= 1;
+                        timeout_cnt <= 0;
                         state <= SEND_LOW_NIBBLE;
                     end
                 end
                 
                 SEND_LOW_NIBBLE: begin
-                    if (i2c_done && !i2c_busy) begin
+                    if ((i2c_done || timeout_cnt >= 1000000) && !i2c_busy) begin
+                        if (!i2c_done) begin
+                            timeout_cnt <= 0;
+                        end
                         // Send low nibble with E=1
                         i2c_data <= {current_cmd[3:0], 1'b1, 1'b1, 1'b0, 1'b0};  // E=1
                         i2c_start <= 1;
+                        timeout_cnt <= 0;
                         state <= CLEAR_E2;
                     end
                 end
                 
                 CLEAR_E2: begin
-                    if (i2c_done && !i2c_busy) begin
-                        // Clear E after low nibble
+                    if ((i2c_done || timeout_cnt >= 1000000) && !i2c_busy) begin
+                        // Clear E after low nibble (or timeout)
+                        if (!i2c_done) begin
+                            // I2C failed, but continue anyway
+                            timeout_cnt <= 0;
+                        end
                         i2c_data <= {current_cmd[3:0], 1'b1, 1'b0, 1'b0, 1'b0};  // E=0
                         i2c_start <= 1;
+                        timeout_cnt <= 0;
                         state <= DELAY_STATE;
                     end
                 end
                 
                 DELAY_STATE: begin
-                    if (i2c_done) begin
+                    if (i2c_done || timeout_cnt >= 1000000) begin
+                        if (timeout_cnt >= 1000000) begin
+                            // I2C timeout - assume transaction completed
+                            timeout_cnt <= 0;
+                        end
                         if (init_step == 5) begin
                             // Clear command needs longer delay (2ms = 200,000 cycles)
                             if (delay_cnt < 200000) begin
@@ -276,28 +302,40 @@ module i2c_lcd_2004 #(
                 end
                 
                 CLEAR_DE1: begin
-                    if (i2c_done && !i2c_busy) begin
+                    if ((i2c_done || timeout_cnt >= 1000000) && !i2c_busy) begin
+                        if (!i2c_done) begin
+                            timeout_cnt <= 0;
+                        end
                         // Clear E after high nibble of data
                         i2c_data <= {current_data[7:4], 1'b1, 1'b0, 1'b0, 1'b1};  // E=0
                         i2c_start <= 1;
+                        timeout_cnt <= 0;
                         state <= SEND_DATA_LOW;
                     end
                 end
                 
                 SEND_DATA_LOW: begin
-                    if (i2c_done && !i2c_busy) begin
+                    if ((i2c_done || timeout_cnt >= 1000000) && !i2c_busy) begin
+                        if (!i2c_done) begin
+                            timeout_cnt <= 0;
+                        end
                         // Send low nibble with E=1
                         i2c_data <= {current_data[3:0], 1'b1, 1'b1, 1'b0, 1'b1};  // E=1
                         i2c_start <= 1;
+                        timeout_cnt <= 0;
                         state <= CLEAR_DE2;
                     end
                 end
                 
                 CLEAR_DE2: begin
-                    if (i2c_done && !i2c_busy) begin
+                    if ((i2c_done || timeout_cnt >= 1000000) && !i2c_busy) begin
+                        if (!i2c_done) begin
+                            timeout_cnt <= 0;
+                        end
                         // Clear E after low nibble, data complete
                         i2c_data <= {current_data[3:0], 1'b1, 1'b0, 1'b0, 1'b1};  // E=0
                         i2c_start <= 1;
+                        timeout_cnt <= 0;
                         delay_cnt <= 0;
                         char_index <= char_index + 1;
                         is_data_mode <= 1;
