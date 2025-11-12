@@ -8,7 +8,7 @@ module lcd_test_top(
 
     // Try address 0x27 first, if doesn't work change to 0x3F
     // To change: modify the parameter below and re-synthesize
-    parameter I2C_ADDR = 7'3f;  // Common addresses: 0x27 or 0x3F
+    parameter I2C_ADDR = 7'h3f;  // Common addresses: 0x27 or 0x3F
     // If LCD doesn't work, try: parameter I2C_ADDR = 7'h3F;
     
     wire sda_out, sda_en;
@@ -222,54 +222,49 @@ module i2c_lcd_2004 #(
                 end
                 
                 DELAY_STATE: begin
-                    if (i2c_done || (timeout_cnt >= 1000000)) begin
-                        if (timeout_cnt >= 1000000) begin
-                            // I2C timeout - assume transaction completed
-                            timeout_cnt <= 0;
+                    // Always increment delay counter (delay happens after I2C transaction)
+                    if (init_step == 5) begin
+                        // Clear command needs longer delay (2ms = 200,000 cycles)
+                        if (delay_cnt < 200000) begin
+                            delay_cnt <= delay_cnt + 1;
+                        end else begin
+                            delay_cnt <= 0;
+                            init_step <= init_step + 1;
+                            state <= SEND_HIGH_NIBBLE;
                         end
-                        if (init_step == 5) begin
-                            // Clear command needs longer delay (2ms = 200,000 cycles)
-                            if (delay_cnt < 200000) begin
-                                delay_cnt <= delay_cnt + 1;
-                            end else begin
-                                delay_cnt <= 0;
+                    end else if (init_step == 7) begin
+                        // Cursor command delay (500us)
+                        if (delay_cnt < 50000) begin
+                            delay_cnt <= delay_cnt + 1;
+                        end else begin
+                            delay_cnt <= 0;
+                            init_step <= 20;  // Mark as in data mode
+                            is_data_mode <= 1;
+                            state <= SEND_DATA_HIGH;
+                        end
+                    end else if (init_step >= 20) begin
+                        // Data delay (100us)
+                        if (delay_cnt < 10000) begin
+                            delay_cnt <= delay_cnt + 1;
+                        end else begin
+                            delay_cnt <= 0;
+                            state <= SEND_DATA_HIGH;
+                        end
+                    end else begin
+                        // Delay between init commands (500us = 50,000 cycles)
+                        if (delay_cnt < 50000) begin
+                            delay_cnt <= delay_cnt + 1;
+                        end else begin
+                            delay_cnt <= 0;
+                            if (init_step < 6) begin
                                 init_step <= init_step + 1;
                                 state <= SEND_HIGH_NIBBLE;
-                            end
-                        end else if (init_step == 7) begin
-                            // Cursor command delay (500us)
-                            if (delay_cnt < 50000) begin
-                                delay_cnt <= delay_cnt + 1;
                             end else begin
-                                delay_cnt <= 0;
-                                init_step <= 20;  // Mark as in data mode
+                                // Init complete, start writing text
+                                char_index <= 0;
                                 is_data_mode <= 1;
+                                current_data <= text_mem[0];
                                 state <= SEND_DATA_HIGH;
-                            end
-                        end else if (init_step >= 20) begin
-                            // Data delay (100us)
-                            if (delay_cnt < 10000) begin
-                                delay_cnt <= delay_cnt + 1;
-                            end else begin
-                                delay_cnt <= 0;
-                                state <= SEND_DATA_HIGH;
-                            end
-                        end else begin
-                            // Delay between init commands (500us = 50,000 cycles)
-                            if (delay_cnt < 50000) begin
-                                delay_cnt <= delay_cnt + 1;
-                            end else begin
-                                delay_cnt <= 0;
-                                if (init_step < 6) begin
-                                    init_step <= init_step + 1;
-                                    state <= SEND_HIGH_NIBBLE;
-                                end else begin
-                                    // Init complete, start writing text
-                                    char_index <= 0;
-                                    is_data_mode <= 1;
-                                    current_data <= text_mem[0];
-                                    state <= SEND_DATA_HIGH;
-                                end
                             end
                         end
                     end
@@ -359,6 +354,7 @@ module i2c_lcd_2004 #(
                         // Bit 3 = Backlight, all other bits = 0
                         i2c_data <= 8'h08;  // Backlight on, E=0, RW=0, RS=0, D7-D4=0
                         i2c_start <= 1;
+                        timeout_cnt <= 0;
                     end
                 end
             endcase
