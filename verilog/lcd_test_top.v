@@ -136,7 +136,7 @@ module lcd_test_top (
                                     // Found it!
                                     addr_found <= 1;
                                     // Update message with hex address
-                                    message[24] <= hex_to_ascii(current_addr[7:4]);
+                                    message[24] <= hex_to_ascii({1'b0, current_addr[6:4]});
                                     message[25] <= hex_to_ascii(current_addr[3:0]);
                                     state <= INIT;
                                     lcd_step <= 0;
