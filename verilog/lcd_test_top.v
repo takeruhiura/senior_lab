@@ -7,7 +7,9 @@ module lcd_test_top(
 );
 
     // Try address 0x27 first, if doesn't work change to 0x3F
+    // To change: modify the parameter below and re-synthesize
     parameter I2C_ADDR = 7'h27;  // Common addresses: 0x27 or 0x3F
+    // If LCD doesn't work, try: parameter I2C_ADDR = 7'h3F;
     
     wire sda_out, sda_en;
     wire [7:0] state_debug;
@@ -308,7 +310,16 @@ module i2c_lcd_2004 #(
                 end
                 
                 IDLE: begin
-                    // Stay idle
+                    // Periodically send backlight-on command to keep backlight on
+                    if (delay_cnt < 10000000) begin  // Every 100ms
+                        delay_cnt <= delay_cnt + 1;
+                    end else if (!i2c_busy) begin
+                        delay_cnt <= 0;
+                        // Send backlight-on only (no LCD command, just backlight)
+                        // Bit 3 = Backlight, all other bits = 0
+                        i2c_data <= 8'h08;  // Backlight on, E=0, RW=0, RS=0, D7-D4=0
+                        i2c_start <= 1;
+                    end
                 end
             endcase
             
