@@ -11,11 +11,9 @@ module lcd_test_top(
     
     wire sda_out, sda_en;
     wire [7:0] state_debug;
-    wire scl_out;
     
     // Tri-state SDA
     assign sda = sda_en ? sda_out : 1'bz;
-    assign scl = scl_out;
     
     // Debug LEDs show state
     assign led = {8'h00, state_debug};
@@ -25,7 +23,7 @@ module lcd_test_top(
     ) lcd (
         .clk(clk),
         .rst(rst),
-        .scl(scl_out),
+        .scl(scl),
         .sda_out(sda_out),
         .sda_in(sda),
         .sda_en(sda_en),
@@ -52,12 +50,12 @@ module i2c_lcd_2004 #(
     localparam BL = 3, EN = 2, RW = 1, RS = 0;
     
     // States
-    localparam INIT = 0, DELAY = 1, SEND_I2C = 2, 
-               WRITE_TEXT = 3, DONE = 4, IDLE = 5;
+    localparam INIT = 0, SEND_HIGH_NIBBLE = 1, CLEAR_E1 = 2, 
+               SEND_LOW_NIBBLE = 3, CLEAR_E2 = 4, DELAY_STATE = 5,
+               SEND_DATA_HIGH = 6, CLEAR_DE1 = 7, SEND_DATA_LOW = 8, 
+               CLEAR_DE2 = 9, DONE = 10, IDLE = 11;
     
     reg [7:0] state;
-    
-    assign state_debug = state;
     reg [31:0] delay_cnt;
     reg [7:0] init_step;
     reg [7:0] char_index;
@@ -68,9 +66,10 @@ module i2c_lcd_2004 #(
     wire i2c_busy;
     wire i2c_done;
     
-    // LCD initialization sequence
-    reg [7:0] lcd_cmd;
-    reg lcd_cmd_valid;
+    // LCD command/data registers
+    reg [7:0] current_cmd;
+    reg [7:0] current_data;
+    reg is_data_mode;  // 0 = command, 1 = data
     
     // Text to display: "Hello World!" on line 1, "I2C LCD 2004!" on line 2
     reg [7:0] text_mem [0:31];
@@ -86,6 +85,8 @@ module i2c_lcd_2004 #(
         text_mem[24] = "C"; text_mem[25] = " "; text_mem[26] = "L"; text_mem[27] = "C";
         text_mem[28] = "D"; text_mem[29] = " "; text_mem[30] = "2"; text_mem[31] = "0";
     end
+    
+    assign state_debug = state;
     
     // I2C master module instance
     i2c_master i2c (
@@ -110,78 +111,185 @@ module i2c_lcd_2004 #(
             init_step <= 0;
             char_index <= 0;
             i2c_start <= 0;
-            lcd_cmd <= 0;
-            lcd_cmd_valid <= 0;
+            current_cmd <= 0;
+            current_data <= 0;
+            is_data_mode <= 0;
         end else begin
+            i2c_start <= 0;  // Default: don't start I2C
+            
             case (state)
                 INIT: begin
-                    // Wait 50ms for LCD power up
+                    // Wait 50ms for LCD power up (100MHz * 0.05s = 5,000,000)
                     if (delay_cnt < 5000000) begin
                         delay_cnt <= delay_cnt + 1;
                     end else begin
                         delay_cnt <= 0;
                         init_step <= 0;
-                        state <= SEND_I2C;
+                        is_data_mode <= 0;
+                        state <= SEND_HIGH_NIBBLE;
                     end
                 end
                 
-                SEND_I2C: begin
-                    if (!i2c_busy && !lcd_cmd_valid) begin
-                        // Generate LCD commands based on init_step
+                SEND_HIGH_NIBBLE: begin
+                    if (!i2c_busy) begin
                         case (init_step)
-                            // Initialization sequence for 4-bit mode
-                            0: begin lcd_cmd <= 8'h33; lcd_cmd_valid <= 1; end  // Init
-                            1: begin lcd_cmd <= 8'h32; lcd_cmd_valid <= 1; end  // 4-bit mode
-                            2: begin lcd_cmd <= 8'h28; lcd_cmd_valid <= 1; end  // 2 lines, 5x8
-                            3: begin lcd_cmd <= 8'h0C; lcd_cmd_valid <= 1; end  // Display ON
-                            4: begin lcd_cmd <= 8'h06; lcd_cmd_valid <= 1; end  // Entry mode
-                            5: begin lcd_cmd <= 8'h01; lcd_cmd_valid <= 1; end  // Clear
-                            6: begin lcd_cmd <= 8'h80; lcd_cmd_valid <= 1; end  // Set cursor line 1
+                            0: current_cmd <= 8'h33;  // Init
+                            1: current_cmd <= 8'h32;  // 4-bit mode
+                            2: current_cmd <= 8'h28;  // 2 lines, 5x8
+                            3: current_cmd <= 8'h0C;  // Display ON
+                            4: current_cmd <= 8'h06;  // Entry mode
+                            5: current_cmd <= 8'h01;  // Clear
+                            6: current_cmd <= 8'h80;  // Set cursor line 1
                             default: begin
-                                init_step <= 0;
+                                // Init complete, start writing text
                                 char_index <= 0;
-                                state <= WRITE_TEXT;
+                                is_data_mode <= 1;
+                                current_data <= text_mem[0];
+                                state <= SEND_DATA_HIGH;
                             end
                         endcase
-                    end else if (lcd_cmd_valid && !i2c_busy) begin
-                        // Send command to LCD via I2C
-                        lcd_send_cmd(lcd_cmd);
-                        lcd_cmd_valid <= 0;
-                    end else if (i2c_done) begin
-                        delay_cnt <= 0;
-                        state <= DELAY;
+                        
+                        if (init_step <= 6) begin
+                            // Send high nibble with E=1, RS=0 (command mode)
+                            i2c_data <= {current_cmd[7:4], 1'b1, 1'b1, 1'b0, 1'b0};  // BL=1, E=1, RW=0, RS=0
+                            i2c_start <= 1;
+                            state <= CLEAR_E1;
+                        end
                     end
                 end
                 
-                DELAY: begin
-                    if (delay_cnt < 50000) begin  // Small delay between commands
-                        delay_cnt <= delay_cnt + 1;
-                    end else begin
-                        delay_cnt <= 0;
-                        init_step <= init_step + 1;
-                        state <= SEND_I2C;
+                CLEAR_E1: begin
+                    if (i2c_done && !i2c_busy) begin
+                        // Clear E after high nibble
+                        i2c_data <= {current_cmd[7:4], 1'b1, 1'b0, 1'b0, 1'b0};  // E=0
+                        i2c_start <= 1;
+                        state <= SEND_LOW_NIBBLE;
                     end
                 end
                 
-                WRITE_TEXT: begin
+                SEND_LOW_NIBBLE: begin
+                    if (i2c_done && !i2c_busy) begin
+                        // Send low nibble with E=1
+                        i2c_data <= {current_cmd[3:0], 1'b1, 1'b1, 1'b0, 1'b0};  // E=1
+                        i2c_start <= 1;
+                        state <= CLEAR_E2;
+                    end
+                end
+                
+                CLEAR_E2: begin
+                    if (i2c_done && !i2c_busy) begin
+                        // Clear E after low nibble
+                        i2c_data <= {current_cmd[3:0], 1'b1, 1'b0, 1'b0, 1'b0};  // E=0
+                        i2c_start <= 1;
+                        state <= DELAY_STATE;
+                    end
+                end
+                
+                DELAY_STATE: begin
+                    if (i2c_done) begin
+                        if (init_step == 5) begin
+                            // Clear command needs longer delay (2ms = 200,000 cycles)
+                            if (delay_cnt < 200000) begin
+                                delay_cnt <= delay_cnt + 1;
+                            end else begin
+                                delay_cnt <= 0;
+                                init_step <= init_step + 1;
+                                state <= SEND_HIGH_NIBBLE;
+                            end
+                        end else if (init_step == 7) begin
+                            // Cursor command delay (500us)
+                            if (delay_cnt < 50000) begin
+                                delay_cnt <= delay_cnt + 1;
+                            end else begin
+                                delay_cnt <= 0;
+                                init_step <= 20;  // Mark as in data mode
+                                is_data_mode <= 1;
+                                state <= SEND_DATA_HIGH;
+                            end
+                        end else if (init_step >= 20) begin
+                            // Data delay (100us)
+                            if (delay_cnt < 10000) begin
+                                delay_cnt <= delay_cnt + 1;
+                            end else begin
+                                delay_cnt <= 0;
+                                state <= SEND_DATA_HIGH;
+                            end
+                        end else begin
+                            // Delay between init commands (500us = 50,000 cycles)
+                            if (delay_cnt < 50000) begin
+                                delay_cnt <= delay_cnt + 1;
+                            end else begin
+                                delay_cnt <= 0;
+                                if (init_step < 6) begin
+                                    init_step <= init_step + 1;
+                                    state <= SEND_HIGH_NIBBLE;
+                                end else begin
+                                    // Init complete, start writing text
+                                    char_index <= 0;
+                                    is_data_mode <= 1;
+                                    current_data <= text_mem[0];
+                                    state <= SEND_DATA_HIGH;
+                                end
+                            end
+                        end
+                    end
+                end
+                
+                SEND_DATA_HIGH: begin
                     if (!i2c_busy) begin
                         if (char_index < 20) begin
                             // Write first line
-                            lcd_send_data(text_mem[char_index]);
-                            char_index <= char_index + 1;
+                            current_data <= text_mem[char_index];
+                            // Send high nibble with RS=1 (data mode)
+                            i2c_data <= {text_mem[char_index][7:4], 1'b1, 1'b1, 1'b0, 1'b1};  // BL=1, E=1, RW=0, RS=1
+                            i2c_start <= 1;
+                            state <= CLEAR_DE1;
                         end else if (char_index == 20) begin
                             // Move to second line
-                            lcd_cmd <= 8'hC0;  // Line 2 address
-                            lcd_cmd_valid <= 1;
-                            char_index <= char_index + 1;
-                            state <= SEND_I2C;
+                            is_data_mode <= 0;
+                            current_cmd <= 8'hC0;  // Line 2 address
+                            init_step <= 7;  // Special marker for cursor command
+                            state <= SEND_HIGH_NIBBLE;
                         end else if (char_index < 32) begin
                             // Write second line
-                            lcd_send_data(text_mem[char_index]);
-                            char_index <= char_index + 1;
+                            current_data <= text_mem[char_index];
+                            // Send high nibble with RS=1
+                            i2c_data <= {text_mem[char_index][7:4], 1'b1, 1'b1, 1'b0, 1'b1};  // BL=1, E=1, RW=0, RS=1
+                            i2c_start <= 1;
+                            state <= CLEAR_DE1;
                         end else begin
                             state <= DONE;
                         end
+                    end
+                end
+                
+                CLEAR_DE1: begin
+                    if (i2c_done && !i2c_busy) begin
+                        // Clear E after high nibble of data
+                        i2c_data <= {current_data[7:4], 1'b1, 1'b0, 1'b0, 1'b1};  // E=0
+                        i2c_start <= 1;
+                        state <= SEND_DATA_LOW;
+                    end
+                end
+                
+                SEND_DATA_LOW: begin
+                    if (i2c_done && !i2c_busy) begin
+                        // Send low nibble with E=1
+                        i2c_data <= {current_data[3:0], 1'b1, 1'b1, 1'b0, 1'b1};  // E=1
+                        i2c_start <= 1;
+                        state <= CLEAR_DE2;
+                    end
+                end
+                
+                CLEAR_DE2: begin
+                    if (i2c_done && !i2c_busy) begin
+                        // Clear E after low nibble, data complete
+                        i2c_data <= {current_data[3:0], 1'b1, 1'b0, 1'b0, 1'b1};  // E=0
+                        i2c_start <= 1;
+                        delay_cnt <= 0;
+                        char_index <= char_index + 1;
+                        is_data_mode <= 1;
+                        state <= DELAY_STATE;
                     end
                 end
                 
@@ -193,70 +301,9 @@ module i2c_lcd_2004 #(
                     // Stay idle
                 end
             endcase
+            
         end
     end
-    
-    // Task to send command to LCD
-    task lcd_send_cmd;
-        input [7:0] cmd;
-        begin
-            // Send high nibble with E pulse
-            i2c_data <= {cmd[7:4], 1'b1, 1'b1, 1'b0, 1'b0};  // BL=1, E=1, RW=0, RS=0
-            i2c_start <= 1;
-            @(posedge clk);
-            i2c_start <= 0;
-            
-            // Wait and clear E
-            @(posedge i2c_done);
-            i2c_data <= {cmd[7:4], 1'b1, 1'b0, 1'b0, 1'b0};  // E=0
-            i2c_start <= 1;
-            @(posedge clk);
-            i2c_start <= 0;
-            
-            // Send low nibble
-            @(posedge i2c_done);
-            i2c_data <= {cmd[3:0], 1'b1, 1'b1, 1'b0, 1'b0};  // E=1
-            i2c_start <= 1;
-            @(posedge clk);
-            i2c_start <= 0;
-            
-            @(posedge i2c_done);
-            i2c_data <= {cmd[3:0], 1'b1, 1'b0, 1'b0, 1'b0};  // E=0
-            i2c_start <= 1;
-            @(posedge clk);
-            i2c_start <= 0;
-        end
-    endtask
-    
-    // Task to send data to LCD
-    task lcd_send_data;
-        input [7:8] data;
-        begin
-            // Send high nibble with RS=1 (data mode)
-            i2c_data <= {data[7:4], 1'b1, 1'b1, 1'b0, 1'b1};  // BL=1, E=1, RW=0, RS=1
-            i2c_start <= 1;
-            @(posedge clk);
-            i2c_start <= 0;
-            
-            @(posedge i2c_done);
-            i2c_data <= {data[7:4], 1'b1, 1'b0, 1'b0, 1'b1};  // E=0
-            i2c_start <= 1;
-            @(posedge clk);
-            i2c_start <= 0;
-            
-            @(posedge i2c_done);
-            i2c_data <= {data[3:0], 1'b1, 1'b1, 1'b0, 1'b1};  // E=1
-            i2c_start <= 1;
-            @(posedge clk);
-            i2c_start <= 0;
-            
-            @(posedge i2c_done);
-            i2c_data <= {data[3:0], 1'b1, 1'b0, 1'b0, 1'b1};  // E=0
-            i2c_start <= 1;
-            @(posedge clk);
-            i2c_start <= 0;
-        end
-    endtask
 
 endmodule
 
@@ -282,6 +329,8 @@ module i2c_master(
     reg [3:0] bit_cnt;
     reg [15:0] clk_cnt;
     reg [7:0] data_buf;
+    reg [6:0] addr_buf;
+    reg ack_after_addr;
     
     // I2C clock ~100kHz (100MHz / 1000 = 100kHz)
     localparam CLK_DIV = 500;
@@ -296,6 +345,7 @@ module i2c_master(
             done <= 0;
             bit_cnt <= 0;
             clk_cnt <= 0;
+            ack_after_addr <= 0;
         end else begin
             done <= 0;
             
@@ -303,18 +353,21 @@ module i2c_master(
                 IDLE: begin
                     scl <= 1;
                     sda_out <= 1;
+                    sda_en <= 1;
                     if (start) begin
                         data_buf <= data;
+                        addr_buf <= addr;
                         busy <= 1;
                         state <= START_BIT;
                         clk_cnt <= 0;
+                        ack_after_addr <= 0;
                     end
                 end
                 
                 START_BIT: begin
                     if (clk_cnt < CLK_DIV/2) begin
                         clk_cnt <= clk_cnt + 1;
-                        sda_out <= 0;  // Start condition
+                        sda_out <= 0;  // Start condition: SDA goes low while SCL is high
                     end else begin
                         clk_cnt <= 0;
                         bit_cnt <= 0;
@@ -327,9 +380,9 @@ module i2c_master(
                         clk_cnt <= clk_cnt + 1;
                         scl <= 0;
                         if (bit_cnt < 7)
-                            sda_out <= addr[6 - bit_cnt];
+                            sda_out <= addr_buf[6 - bit_cnt];
                         else
-                            sda_out <= 0;  // Write bit
+                            sda_out <= 0;  // Write bit (0 = write)
                     end else if (clk_cnt < 3*CLK_DIV/4) begin
                         clk_cnt <= clk_cnt + 1;
                         scl <= 1;
@@ -339,6 +392,7 @@ module i2c_master(
                             bit_cnt <= bit_cnt + 1;
                         end else begin
                             bit_cnt <= 0;
+                            ack_after_addr <= 1;
                             state <= ACK_BIT;
                         end
                     end
@@ -355,10 +409,14 @@ module i2c_master(
                     end else begin
                         clk_cnt <= 0;
                         sda_en <= 1;
-                        if (bit_cnt == 0) begin
+                        sda_out <= 1;
+                        if (ack_after_addr) begin
+                            // ACK after address, send data
+                            ack_after_addr <= 0;
                             bit_cnt <= 0;
                             state <= DATA_BITS;
                         end else begin
+                            // ACK after data, send stop
                             state <= STOP_BIT;
                         end
                     end
@@ -377,7 +435,8 @@ module i2c_master(
                         if (bit_cnt < 7) begin
                             bit_cnt <= bit_cnt + 1;
                         end else begin
-                            bit_cnt <= 1;
+                            bit_cnt <= 0;
+                            ack_after_addr <= 0;
                             state <= ACK_BIT;
                         end
                     end
@@ -393,7 +452,7 @@ module i2c_master(
                         scl <= 1;
                     end else begin
                         clk_cnt <= 0;
-                        sda_out <= 1;  // Stop condition
+                        sda_out <= 1;  // Stop condition: SDA goes high while SCL is high
                         done <= 1;
                         busy <= 0;
                         state <= IDLE;
