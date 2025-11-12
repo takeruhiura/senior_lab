@@ -37,10 +37,10 @@ module i2c_lcd_2004 #(
 )(
     input wire clk,
     input wire rst,
-    output reg scl,
-    output reg sda_out,
+    output wire scl,
+    output wire sda_out,
     input wire sda_in,
-    output reg sda_en,
+    output wire sda_en,
     output wire [7:0] state_debug
 );
 
@@ -65,6 +65,11 @@ module i2c_lcd_2004 #(
     reg [7:0] i2c_data;
     wire i2c_busy;
     wire i2c_done;
+    
+    // Internal I2C signals (driven by i2c_master)
+    wire scl_internal;
+    wire sda_out_internal;
+    wire sda_en_internal;
     
     // LCD command/data registers
     reg [7:0] current_cmd;
@@ -95,13 +100,18 @@ module i2c_lcd_2004 #(
         .start(i2c_start),
         .addr(I2C_ADDR),
         .data(i2c_data),
-        .scl(scl),
-        .sda_out(sda_out),
+        .scl(scl_internal),
+        .sda_out(sda_out_internal),
         .sda_in(sda_in),
-        .sda_en(sda_en),
+        .sda_en(sda_en_internal),
         .busy(i2c_busy),
         .done(i2c_done)
     );
+    
+    // Connect internal signals to output ports
+    assign scl = scl_internal;
+    assign sda_out = sda_out_internal;
+    assign sda_en = sda_en_internal;
     
     // Main state machine
     always @(posedge clk or posedge rst) begin
