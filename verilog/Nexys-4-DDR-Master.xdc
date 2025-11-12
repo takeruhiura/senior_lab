@@ -6,10 +6,14 @@ create_clock -add -name sys_clk_pin -period 10.00 -waveform {0 5} [get_ports {cl
 set_property -dict { PACKAGE_PIN N17   IOSTANDARD LVCMOS33 } [get_ports { rst }]; #IO_L9P_T1_DQS_14 Sch=btnc
 
 ## I2C LCD on Pmod JA
-## JA[3] = E18 = SDA (second from right on top row)
-## JA[4] = G17 = SCL (top right pin)
+## JA3 = E18 = SDA
+## JA4 = G17 = SCL
+## Note: I2C requires external pull-up resistors (typically 4.7k to 3.3V)
 set_property -dict { PACKAGE_PIN E18   IOSTANDARD LVCMOS33 } [get_ports { sda }]; #IO_L21P_T3_DQS_15 Sch=ja[3]
 set_property -dict { PACKAGE_PIN G17   IOSTANDARD LVCMOS33 } [get_ports { scl }]; #IO_L18N_T2_A23_15 Sch=ja[4]
+## Enable weak pull-up resistors (if your board doesn't have external ones)
+#set_property PULLUP true [get_ports { scl }];
+#set_property PULLUP true [get_ports { sda }];
 
 ## Debug LEDs
 set_property -dict { PACKAGE_PIN H17   IOSTANDARD LVCMOS33 } [get_ports { led[0] }]; #IO_L18P_T2_A24_15 Sch=led[0]
