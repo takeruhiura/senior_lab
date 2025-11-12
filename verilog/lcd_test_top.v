@@ -1,5 +1,5 @@
-// I2C LCD Controller with robust initialization
-module lcd_test_top (
+// I2C Address Scanner - Tests common LCD addresses and shows which one responds
+module i2c_scanner (
     input wire clk,
     input wire rst,
     inout wire sda,
@@ -7,13 +7,10 @@ module lcd_test_top (
     output wire [15:0] led
 );
 
-    localparam I2C_ADDR = 7'h20;  // Your detected address
-    
-    // State machine
-    localparam IDLE = 0, INIT = 1, WRITE = 2, DONE = 3;
-    reg [1:0] state;
-    reg [31:0] delay_cnt;
-    reg [7:0] step_cnt;
+    // Common I2C addresses for LCD modules
+    reg [6:0] test_addr;
+    reg [6:0] found_addr;
+    reg addr_found;
     
     // I2C control
     reg i2c_ena;
@@ -23,225 +20,150 @@ module lcd_test_top (
     reg prev_busy;
     wire i2c_done = prev_busy & ~i2c_busy;
     
-    // Message
-    reg [7:0] message [0:31];
+    reg [31:0] delay_cnt;
+    reg [2:0] scan_state;
+    
+    localparam IDLE = 0, START_SCAN = 1, TEST_ADDR = 2, WAIT_RESULT = 3, FOUND = 4;
+    
+    // Test addresses: 0x27, 0x3F, 0x20, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E
+    reg [6:0] addr_list [0:9];
     initial begin
-        message[0]="H"; message[1]="e"; message[2]="l"; message[3]="l";
-        message[4]="o"; message[5]=" "; message[6]="F"; message[7]="P";
-        message[8]="G"; message[9]="A"; message[10]="!"; message[11]=" ";
-        message[12]=" "; message[13]=" "; message[14]=" "; message[15]=" ";
-        message[16]="A"; message[17]="d"; message[18]="d"; message[19]="r";
-        message[20]=":"; message[21]=" "; message[22]="0"; message[23]="x";
-        message[24]="2"; message[25]="0"; message[26]=" "; message[27]=" ";
-        message[28]=" "; message[29]=" "; message[30]=" "; message[31]=" ";
+        addr_list[0] = 7'h27;
+        addr_list[1] = 7'h3F;
+        addr_list[2] = 7'h20;
+        addr_list[3] = 7'h38;
+        addr_list[4] = 7'h39;
+        addr_list[5] = 7'h3A;
+        addr_list[6] = 7'h3B;
+        addr_list[7] = 7'h3C;
+        addr_list[8] = 7'h3D;
+        addr_list[9] = 7'h3E;
     end
+    
+    reg [3:0] addr_index;
     
     // Debug LEDs
-    assign led[1:0] = state;
-    assign led[9:2] = step_cnt;
-    assign led[10] = i2c_ena;
-    assign led[11] = prev_busy;
-    assign led[12] = i2c_busy;
+    // led[6:0] = found address (if found) or current test address
+    // led[15] = address found indicator
+    // led[14] = scanning indicator (blinks)
+    // led[13] = ACK error indicator
+    assign led[6:0] = addr_found ? found_addr : test_addr;
+    assign led[15] = addr_found;
+    assign led[14] = delay_cnt[23]; // Blink while scanning
     assign led[13] = i2c_ack_error;
-    assign led[14] = (delay_cnt[23]); // Slow blink
-    assign led[15] = (state == DONE);
-    
-    // Send 4-bit command via I2C
-    task send_nibble;
-        input [3:0] data;
-        input rs;
-        input en;
-        begin
-            i2c_data_wr <= {data, 1'b1, en, 1'b0, rs}; // backlight=1, rw=0
-            i2c_ena <= 1;
-        end
-    endtask
-    
-    always @(posedge clk or posedge rst) begin
-        if (rst) begin
-            state <= IDLE;
-            delay_cnt <= 0;
-            step_cnt <= 0;
-            i2c_ena <= 0;
-            prev_busy <= 0;
-        end else begin
-            prev_busy <= i2c_busy;
-            
-            case (state)
-                IDLE: begin
-                    if (delay_cnt < 150_000_000)  // 1.5 second startup
-                        delay_cnt <= delay_cnt + 1;
-                    else begin
-                        state <= INIT;
-                        delay_cnt <= 0;
-                        step_cnt <= 0;
-                    end
-                end
-                
-                INIT: begin
-                    if (!i2c_busy && !i2c_ena) begin
-                        case (step_cnt)
-                            // Initial reset sequence
-                            0: begin send_nibble(4'h3, 0, 1); step_cnt <= step_cnt + 1; end
-                            1: begin send_nibble(4'h3, 0, 0); step_cnt <= step_cnt + 1; end
-                            2: begin 
-                                if (delay_cnt < 50_000_000) delay_cnt <= delay_cnt + 1;  // 500ms
-                                else begin delay_cnt <= 0; step_cnt <= step_cnt + 1; end
-                            end
-                            
-                            3: begin send_nibble(4'h3, 0, 1); step_cnt <= step_cnt + 1; end
-                            4: begin send_nibble(4'h3, 0, 0); step_cnt <= step_cnt + 1; end
-                            5: begin 
-                                if (delay_cnt < 10_000_000) delay_cnt <= delay_cnt + 1;  // 100ms
-                                else begin delay_cnt <= 0; step_cnt <= step_cnt + 1; end
-                            end
-                            
-                            6: begin send_nibble(4'h3, 0, 1); step_cnt <= step_cnt + 1; end
-                            7: begin send_nibble(4'h3, 0, 0); step_cnt <= step_cnt + 1; end
-                            8: begin 
-                                if (delay_cnt < 5_000_000) delay_cnt <= delay_cnt + 1;  // 50ms
-                                else begin delay_cnt <= 0; step_cnt <= step_cnt + 1; end
-                            end
-                            
-                            // Set 4-bit mode
-                            9: begin send_nibble(4'h2, 0, 1); step_cnt <= step_cnt + 1; end
-                            10: begin send_nibble(4'h2, 0, 0); step_cnt <= step_cnt + 1; end
-                            11: begin 
-                                if (delay_cnt < 5_000_000) delay_cnt <= delay_cnt + 1;
-                                else begin delay_cnt <= 0; step_cnt <= step_cnt + 1; end
-                            end
-                            
-                            // Function set: 4-bit, 2 lines, 5x8 (0x28)
-                            12: begin send_nibble(4'h2, 0, 1); step_cnt <= step_cnt + 1; end
-                            13: begin send_nibble(4'h2, 0, 0); step_cnt <= step_cnt + 1; end
-                            14: begin send_nibble(4'h8, 0, 1); step_cnt <= step_cnt + 1; end
-                            15: begin send_nibble(4'h8, 0, 0); step_cnt <= step_cnt + 1; end
-                            16: begin 
-                                if (delay_cnt < 2_000_000) delay_cnt <= delay_cnt + 1;
-                                else begin delay_cnt <= 0; step_cnt <= step_cnt + 1; end
-                            end
-                            
-                            // Display control: Display on, cursor off (0x0C)
-                            17: begin send_nibble(4'h0, 0, 1); step_cnt <= step_cnt + 1; end
-                            18: begin send_nibble(4'h0, 0, 0); step_cnt <= step_cnt + 1; end
-                            19: begin send_nibble(4'hC, 0, 1); step_cnt <= step_cnt + 1; end
-                            20: begin send_nibble(4'hC, 0, 0); step_cnt <= step_cnt + 1; end
-                            21: begin 
-                                if (delay_cnt < 2_000_000) delay_cnt <= delay_cnt + 1;
-                                else begin delay_cnt <= 0; step_cnt <= step_cnt + 1; end
-                            end
-                            
-                            // Clear display (0x01)
-                            22: begin send_nibble(4'h0, 0, 1); step_cnt <= step_cnt + 1; end
-                            23: begin send_nibble(4'h0, 0, 0); step_cnt <= step_cnt + 1; end
-                            24: begin send_nibble(4'h1, 0, 1); step_cnt <= step_cnt + 1; end
-                            25: begin send_nibble(4'h1, 0, 0); step_cnt <= step_cnt + 1; end
-                            26: begin 
-                                if (delay_cnt < 20_000_000) delay_cnt <= delay_cnt + 1;  // 200ms for clear
-                                else begin delay_cnt <= 0; step_cnt <= step_cnt + 1; end
-                            end
-                            
-                            // Entry mode: Increment, no shift (0x06)
-                            27: begin send_nibble(4'h0, 0, 1); step_cnt <= step_cnt + 1; end
-                            28: begin send_nibble(4'h0, 0, 0); step_cnt <= step_cnt + 1; end
-                            29: begin send_nibble(4'h6, 0, 1); step_cnt <= step_cnt + 1; end
-                            30: begin send_nibble(4'h6, 0, 0); step_cnt <= step_cnt + 1; end
-                            31: begin 
-                                if (delay_cnt < 2_000_000) delay_cnt <= delay_cnt + 1;
-                                else begin 
-                                    delay_cnt <= 0; 
-                                    step_cnt <= 0;
-                                    state <= WRITE;
-                                end
-                            end
-                            
-                            default: state <= WRITE;
-                        endcase
-                    end
-                    
-                    if (i2c_busy) i2c_ena <= 0;
-                end
-                
-                WRITE: begin
-                    if (!i2c_busy && !i2c_ena) begin
-                        if (step_cnt < 64) begin  // 32 chars * 2 nibbles = 64
-                            case (step_cnt[0])
-                                0: begin  // High nibble with EN high
-                                    send_nibble(message[step_cnt[6:1]][7:4], 1, 1);
-                                    step_cnt <= step_cnt + 1;
-                                end
-                                1: begin  // High nibble with EN low, then low nibble
-                                    if (step_cnt[1]) begin
-                                        send_nibble(message[step_cnt[6:1]][7:4], 1, 0);
-                                    end else begin
-                                        send_nibble(message[step_cnt[6:1]][3:0], 1, 1);
-                                    end
-                                    step_cnt <= step_cnt + 1;
-                                end
-                            endcase
-                        end else if (step_cnt == 64) begin
-                            // Move to line 2 (0xC0)
-                            send_nibble(4'hC, 0, 1);
-                            step_cnt <= step_cnt + 1;
-                        end else if (step_cnt == 65) begin
-                            send_nibble(4'hC, 0, 0);
-                            step_cnt <= step_cnt + 1;
-                        end else if (step_cnt == 66) begin
-                            send_nibble(4'h0, 0, 1);
-                            step_cnt <= step_cnt + 1;
-                        end else if (step_cnt == 67) begin
-                            send_nibble(4'h0, 0, 0);
-                            step_cnt <= 68;
-                        end else if (step_cnt < 132) begin  // Another 32 chars * 2
-                            case (step_cnt[0])
-                                0: begin
-                                    send_nibble(message[(step_cnt-68)>>1][7:4], 1, 1);
-                                    step_cnt <= step_cnt + 1;
-                                end
-                                1: begin
-                                    if (step_cnt[1]) begin
-                                        send_nibble(message[(step_cnt-68)>>1][7:4], 1, 0);
-                                    end else begin
-                                        send_nibble(message[(step_cnt-68)>>1][3:0], 1, 1);
-                                    end
-                                    step_cnt <= step_cnt + 1;
-                                end
-                            endcase
-                        end else begin
-                            state <= DONE;
-                        end
-                    end
-                    
-                    if (i2c_busy) i2c_ena <= 0;
-                end
-                
-                DONE: begin
-                    i2c_ena <= 0;
-                end
-            endcase
-        end
-    end
+    assign led[12] = i2c_busy;
+    assign led[11] = (scan_state == TEST_ADDR);
+    assign led[10:7] = addr_index;
     
     // I2C master
     i2c_master #(
         .input_clk(100_000_000), 
-        .bus_clk(50_000)  // Slower 50kHz
+        .bus_clk(50_000)  // 50kHz
     ) i2c (
         .clk(clk),
         .reset_n(~rst),
         .ena(i2c_ena),
-        .addr(I2C_ADDR),
-        .rw(1'b0),
-        .data_wr(i2c_data_wr),
+        .addr(test_addr),
+        .rw(1'b0),  // Write
+        .data_wr(8'h00),  // Send dummy data
         .busy(i2c_busy),
         .ack_error(i2c_ack_error),
         .sda(sda),
         .scl(scl)
     );
+    
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            scan_state <= IDLE;
+            delay_cnt <= 0;
+            addr_index <= 0;
+            test_addr <= 7'h27;
+            found_addr <= 0;
+            addr_found <= 0;
+            i2c_ena <= 0;
+            prev_busy <= 0;
+        end else begin
+            prev_busy <= i2c_busy;
+            i2c_ena <= 0;  // Default: don't start I2C
+            
+            case (scan_state)
+                IDLE: begin
+                    // Wait 1 second before starting scan
+                    if (delay_cnt < 100_000_000) begin
+                        delay_cnt <= delay_cnt + 1;
+                    end else begin
+                        delay_cnt <= 0;
+                        addr_index <= 0;
+                        scan_state <= START_SCAN;
+                    end
+                end
+                
+                START_SCAN: begin
+                    if (addr_found) begin
+                        // Address already found, stay in FOUND state
+                        scan_state <= FOUND;
+                    end else if (addr_index < 10) begin
+                        test_addr <= addr_list[addr_index];
+                        delay_cnt <= 0;
+                        scan_state <= TEST_ADDR;
+                    end else begin
+                        // Scanned all addresses, restart
+                        addr_index <= 0;
+                        delay_cnt <= 0;
+                        scan_state <= IDLE;
+                    end
+                end
+                
+                TEST_ADDR: begin
+                    if (!i2c_busy && !i2c_ena) begin
+                        // Start I2C transaction to test address
+                        i2c_ena <= 1;
+                        scan_state <= WAIT_RESULT;
+                    end
+                end
+                
+                WAIT_RESULT: begin
+                    if (i2c_done) begin
+                        // I2C transaction complete, check result
+                        if (!i2c_ack_error) begin
+                            // No ACK error = device responded!
+                            found_addr <= test_addr;
+                            addr_found <= 1;
+                            scan_state <= FOUND;
+                        end else begin
+                            // ACK error = no device at this address
+                            addr_index <= addr_index + 1;
+                            delay_cnt <= 0;
+                            // Wait a bit before testing next address
+                            if (delay_cnt < 10_000_000) begin  // 100ms
+                                delay_cnt <= delay_cnt + 1;
+                            end else begin
+                                delay_cnt <= 0;
+                                scan_state <= START_SCAN;
+                            end
+                        end
+                    end
+                end
+                
+                FOUND: begin
+                    // Address found, display it on LEDs
+                    // Keep scanning periodically to verify
+                    if (delay_cnt < 200_000_000) begin  // 2 seconds
+                        delay_cnt <= delay_cnt + 1;
+                    end else begin
+                        delay_cnt <= 0;
+                        addr_found <= 0;
+                        addr_index <= 0;
+                        scan_state <= START_SCAN;
+                    end
+                end
+            endcase
+        end
+    end
 
 endmodule
 
-// I2C Master Controller
+// I2C Master Controller (same as in lcd_test_top.v)
 module i2c_master #(
     parameter input_clk = 100_000_000,
     parameter bus_clk = 100_000
@@ -260,32 +182,30 @@ module i2c_master #(
 
     localparam divider = (input_clk/bus_clk)/4;
     
-    localparam READY = 0, START = 1, COMMAND = 2, SLV_ACK1 = 3;
-    localparam WR = 4, SLV_ACK2 = 5, STOP = 6;
+    localparam READY = 4'b0000, START = 4'b0001, COMMAND = 4'b0010,
+               SLV_ACK1 = 4'b0011, WR = 4'b0100, SLV_ACK2 = 4'b0101,
+               STOP = 4'b0110;
     
-    reg [2:0] state;
+    reg [3:0] state;
     reg [15:0] count;
-    reg scl_clk;
     reg scl_ena;
     reg sda_int;
     reg sda_ena_n;
+    wire sda_in;
     reg [7:0] addr_rw;
     reg [7:0] data_tx;
-    reg [2:0] bit_cnt;
-    wire sda_in;
+    reg [3:0] bit_cnt;
     
-    assign scl = (scl_ena == 1'b0) ? 1'b1 : scl_clk;
-    assign sda = (sda_ena_n == 1'b0) ? sda_int : 1'bz;
+    assign sda = sda_ena_n ? 1'bz : sda_int;
     assign sda_in = sda;
+    assign scl = scl_ena ? (count < divider ? 1'b0 : 1'b1) : 1'b1;
     
-    always @(posedge clk or negedge reset_n) begin
+    always @(posedge clk) begin
         if (!reset_n) begin
             count <= 0;
-            scl_clk <= 1'b1;
         end else begin
-            if (count == divider - 1) begin
+            if (count == divider*4 - 1) begin
                 count <= 0;
-                scl_clk <= ~scl_clk;
             end else begin
                 count <= count + 1;
             end
@@ -347,7 +267,6 @@ module i2c_master #(
                     end
                     
                     WR: begin
-                        busy <= 1'b1;
                         sda_ena_n <= 1'b0;
                         sda_int <= data_tx[bit_cnt];
                         if (bit_cnt == 0) begin
@@ -375,3 +294,4 @@ module i2c_master #(
     end
 
 endmodule
+
