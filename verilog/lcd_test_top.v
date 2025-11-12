@@ -16,8 +16,7 @@ module lcd_test_top(
     assign sda = sda_en ? sda_out : 1'bz;
     
     // Debug LEDs show state
-    assign led[7:0] = state_debug;
-    assign led[15:8] = 8'h00;
+    assign led = {8'h00, state_debug};
     
     i2c_lcd_2004 #(
         .I2C_ADDR(I2C_ADDR)
@@ -42,7 +41,7 @@ module i2c_lcd_2004 #(
     output reg sda_out,
     input wire sda_in,
     output reg sda_en,
-    output reg [7:0] state_debug
+    output wire [7:0] state_debug
 );
 
     // I2C LCD uses PCF8574 with this bit mapping:
@@ -55,6 +54,8 @@ module i2c_lcd_2004 #(
                WRITE_TEXT = 3, DONE = 4, IDLE = 5;
     
     reg [7:0] state;
+    
+    assign state_debug = state;
     reg [31:0] delay_cnt;
     reg [7:0] init_step;
     reg [7:0] char_index;
