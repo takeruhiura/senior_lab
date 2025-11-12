@@ -45,20 +45,26 @@ module lcd_test_top (
     end
     
     // Init commands
-    reg [7:0] init_cmd [0:6];
+    reg [7:0] init_cmd [0:8];
     initial begin
-        init_cmd[0] = 8'h33; init_cmd[1] = 8'h32; init_cmd[2] = 8'h28;
-        init_cmd[3] = 8'h0C; init_cmd[4] = 8'h06; init_cmd[5] = 8'h01;
-        init_cmd[6] = 8'h80;
+        init_cmd[0] = 8'h33; // Initialize
+        init_cmd[1] = 8'h33; // Initialize again
+        init_cmd[2] = 8'h32; // Set 4-bit mode
+        init_cmd[3] = 8'h28; // 2 line, 5x8 matrix
+        init_cmd[4] = 8'h0C; // Display on, cursor off
+        init_cmd[5] = 8'h06; // Entry mode, increment
+        init_cmd[6] = 8'h01; // Clear display
+        init_cmd[7] = 8'h02; // Return home
+        init_cmd[8] = 8'h80; // Set DDRAM address to 0
     end
     
-    // Debug LEDs - SHOWS ADDRESS DETECTION
+    // Debug LEDs - SHOWS ADDRESS DETECTION AND PROGRESS
     assign led[1:0] = state;
     assign led[3:2] = scan_idx;
     assign led[4] = addr_found;
     assign led[11:5] = current_addr;  // Shows detected I2C address
-    assign led[12] = i2c_ena;
-    assign led[13] = prev_busy;
+    assign led[12] = (state == WRITE) ? char_idx[0] : i2c_ena;  // Blinks during write
+    assign led[13] = (state == INIT) ? cmd_idx[0] : prev_busy;   // Blinks during init
     assign led[14] = i2c_busy;
     assign led[15] = i2c_ack_error;
     
@@ -158,7 +164,7 @@ module lcd_test_top (
                 INIT: begin
                     case (lcd_step)
                         0: begin
-                            if (cmd_idx < 7) begin
+                            if (cmd_idx < 9) begin
                                 lcd_byte <= init_cmd[cmd_idx];
                                 lcd_rs <= 0;
                                 lcd_step <= 1;
@@ -223,7 +229,7 @@ module lcd_test_top (
                         end
                         
                         9: begin
-                            if (delay_cnt < 500_000)
+                            if (delay_cnt < 2_000_000)  // 20ms delay for clear/home commands
                                 delay_cnt <= delay_cnt + 1;
                             else begin
                                 delay_cnt <= 0;
