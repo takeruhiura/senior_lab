@@ -105,7 +105,7 @@ module simple_lcd_test #(
                     case (nibble_state)
                         0: begin
                             if (!i2c_busy) begin
-                                cmd_data <= 8'b00110000;  // 0x30, BL=1, E=1
+                                cmd_data <= 8'b00111000;  // 0x38, with backlight bit on
                                 i2c_go <= 1;
                                 nibble_state <= 1;
                             end
@@ -115,7 +115,7 @@ module simple_lcd_test #(
                         end
                         2: begin
                             if (!i2c_busy) begin
-                                cmd_data <= 8'b00100000;  // E=0
+                                cmd_data <= 8'b00101000;  // E=0, backlight still on
                                 i2c_go <= 1;
                                 nibble_state <= 3;
                             end
@@ -138,7 +138,7 @@ module simple_lcd_test #(
                     case (nibble_state)
                         0: begin
                             if (!i2c_busy) begin
-                                cmd_data <= 8'b00110000;
+                                cmd_data <= 8'b00111000;  // Backlight ON
                                 i2c_go <= 1;
                                 nibble_state <= 1;
                             end
@@ -148,7 +148,7 @@ module simple_lcd_test #(
                         end
                         2: begin
                             if (!i2c_busy) begin
-                                cmd_data <= 8'b00100000;
+                                cmd_data <= 8'b00101000;  // Backlight ON
                                 i2c_go <= 1;
                                 nibble_state <= 3;
                             end
