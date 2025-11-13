@@ -1,378 +1,474 @@
-// I2C LCD Controller with robust initialization
-module lcd_test_top (
-    input wire clk,
-    input wire rst,
-    inout wire sda,
-    output wire scl,
-    output wire [15:0] led
+module lcd_test_top(
+    input wire clk,           // 100MHz clock
+    input wire rst,           // Reset button (BTNC)
+    inout wire sda,           // I2C data
+    output wire scl,          // I2C clock
+    output wire [15:0] led    // Debug LEDs
 );
 
-    localparam I2C_ADDR = 7'h20;  // Your detected address
+    // Try address 0x27 first, if doesn't work change to 0x3F
+    parameter I2C_ADDR = 7'h27;  // Common addresses: 0x27 or 0x3F
     
-    // State machine
-    localparam IDLE = 0, INIT = 1, WRITE = 2, DONE = 3;
-    reg [1:0] state;
-    reg [31:0] delay_cnt;
-    reg [7:0] step_cnt;
+    wire sda_out, sda_en;
+    wire [7:0] state_debug;
     
-    // I2C control
-    reg i2c_ena;
-    reg [7:0] i2c_data_wr;
-    wire i2c_busy;
-    wire i2c_ack_error;
-    reg prev_busy;
-    wire i2c_done = prev_busy & ~i2c_busy;
+    // Tri-state SDA
+    assign sda = sda_en ? sda_out : 1'bz;
     
-    // Message
-    reg [7:0] message [0:31];
-    initial begin
-        message[0]="H"; message[1]="e"; message[2]="l"; message[3]="l";
-        message[4]="o"; message[5]=" "; message[6]="F"; message[7]="P";
-        message[8]="G"; message[9]="A"; message[10]="!"; message[11]=" ";
-        message[12]=" "; message[13]=" "; message[14]=" "; message[15]=" ";
-        message[16]="A"; message[17]="d"; message[18]="d"; message[19]="r";
-        message[20]=":"; message[21]=" "; message[22]="0"; message[23]="x";
-        message[24]="2"; message[25]="0"; message[26]=" "; message[27]=" ";
-        message[28]=" "; message[29]=" "; message[30]=" "; message[31]=" ";
-    end
+    // Debug LEDs show state
+    assign led = {8'h00, state_debug};
     
-    // Debug LEDs
-    assign led[1:0] = state;
-    assign led[9:2] = step_cnt;
-    assign led[10] = i2c_ena;
-    assign led[11] = prev_busy;
-    assign led[12] = i2c_busy;
-    assign led[13] = i2c_ack_error;
-    assign led[14] = (delay_cnt[23]); // Slow blink
-    assign led[15] = (state == DONE);
-    
-    // Send 4-bit command via I2C
-    // Try reversed control bits: RS and EN might be swapped
-    task send_nibble;
-        input [3:0] data;
-        input rs;
-        input en;
-        begin
-            // Swap RS and EN positions
-            i2c_data_wr <= {data[3], data[2], data[1], data[0], 1'b1, rs, 1'b0, en};
-            i2c_ena <= 1;
-        end
-    endtask
-    
-    always @(posedge clk or posedge rst) begin
-        if (rst) begin
-            state <= IDLE;
-            delay_cnt <= 0;
-            step_cnt <= 0;
-            i2c_ena <= 0;
-            prev_busy <= 0;
-        end else begin
-            prev_busy <= i2c_busy;
-            
-            case (state)
-                IDLE: begin
-                    if (delay_cnt < 150_000_000)  // 1.5 second startup
-                        delay_cnt <= delay_cnt + 1;
-                    else begin
-                        state <= INIT;
-                        delay_cnt <= 0;
-                        step_cnt <= 0;
-                    end
-                end
-                
-                INIT: begin
-                    if (!i2c_busy && !i2c_ena) begin
-                        case (step_cnt)
-                            // Initial reset sequence
-                            0: begin send_nibble(4'h3, 0, 1); step_cnt <= step_cnt + 1; end
-                            1: begin send_nibble(4'h3, 0, 0); step_cnt <= step_cnt + 1; end
-                            2: begin 
-                                if (delay_cnt < 50_000_000) delay_cnt <= delay_cnt + 1;  // 500ms
-                                else begin delay_cnt <= 0; step_cnt <= step_cnt + 1; end
-                            end
-                            
-                            3: begin send_nibble(4'h3, 0, 1); step_cnt <= step_cnt + 1; end
-                            4: begin send_nibble(4'h3, 0, 0); step_cnt <= step_cnt + 1; end
-                            5: begin 
-                                if (delay_cnt < 10_000_000) delay_cnt <= delay_cnt + 1;  // 100ms
-                                else begin delay_cnt <= 0; step_cnt <= step_cnt + 1; end
-                            end
-                            
-                            6: begin send_nibble(4'h3, 0, 1); step_cnt <= step_cnt + 1; end
-                            7: begin send_nibble(4'h3, 0, 0); step_cnt <= step_cnt + 1; end
-                            8: begin 
-                                if (delay_cnt < 5_000_000) delay_cnt <= delay_cnt + 1;  // 50ms
-                                else begin delay_cnt <= 0; step_cnt <= step_cnt + 1; end
-                            end
-                            
-                            // Set 4-bit mode
-                            9: begin send_nibble(4'h2, 0, 1); step_cnt <= step_cnt + 1; end
-                            10: begin send_nibble(4'h2, 0, 0); step_cnt <= step_cnt + 1; end
-                            11: begin 
-                                if (delay_cnt < 5_000_000) delay_cnt <= delay_cnt + 1;
-                                else begin delay_cnt <= 0; step_cnt <= step_cnt + 1; end
-                            end
-                            
-                            // Function set: 4-bit, 2 lines, 5x8 (0x28)
-                            12: begin send_nibble(4'h2, 0, 1); step_cnt <= step_cnt + 1; end
-                            13: begin send_nibble(4'h2, 0, 0); step_cnt <= step_cnt + 1; end
-                            14: begin send_nibble(4'h8, 0, 1); step_cnt <= step_cnt + 1; end
-                            15: begin send_nibble(4'h8, 0, 0); step_cnt <= step_cnt + 1; end
-                            16: begin 
-                                if (delay_cnt < 2_000_000) delay_cnt <= delay_cnt + 1;
-                                else begin delay_cnt <= 0; step_cnt <= step_cnt + 1; end
-                            end
-                            
-                            // Display control: Display on, cursor off (0x0C)
-                            17: begin send_nibble(4'h0, 0, 1); step_cnt <= step_cnt + 1; end
-                            18: begin send_nibble(4'h0, 0, 0); step_cnt <= step_cnt + 1; end
-                            19: begin send_nibble(4'hC, 0, 1); step_cnt <= step_cnt + 1; end
-                            20: begin send_nibble(4'hC, 0, 0); step_cnt <= step_cnt + 1; end
-                            21: begin 
-                                if (delay_cnt < 2_000_000) delay_cnt <= delay_cnt + 1;
-                                else begin delay_cnt <= 0; step_cnt <= step_cnt + 1; end
-                            end
-                            
-                            // Clear display (0x01)
-                            22: begin send_nibble(4'h0, 0, 1); step_cnt <= step_cnt + 1; end
-                            23: begin send_nibble(4'h0, 0, 0); step_cnt <= step_cnt + 1; end
-                            24: begin send_nibble(4'h1, 0, 1); step_cnt <= step_cnt + 1; end
-                            25: begin send_nibble(4'h1, 0, 0); step_cnt <= step_cnt + 1; end
-                            26: begin 
-                                if (delay_cnt < 20_000_000) delay_cnt <= delay_cnt + 1;  // 200ms for clear
-                                else begin delay_cnt <= 0; step_cnt <= step_cnt + 1; end
-                            end
-                            
-                            // Entry mode: Increment, no shift (0x06)
-                            27: begin send_nibble(4'h0, 0, 1); step_cnt <= step_cnt + 1; end
-                            28: begin send_nibble(4'h0, 0, 0); step_cnt <= step_cnt + 1; end
-                            29: begin send_nibble(4'h6, 0, 1); step_cnt <= step_cnt + 1; end
-                            30: begin send_nibble(4'h6, 0, 0); step_cnt <= step_cnt + 1; end
-                            31: begin 
-                                if (delay_cnt < 2_000_000) delay_cnt <= delay_cnt + 1;
-                                else begin 
-                                    delay_cnt <= 0; 
-                                    step_cnt <= 0;
-                                    state <= WRITE;
-                                end
-                            end
-                            
-                            default: state <= WRITE;
-                        endcase
-                    end
-                    
-                    if (i2c_busy) i2c_ena <= 0;
-                end
-                
-                WRITE: begin
-                    if (!i2c_busy && !i2c_ena) begin
-                        if (step_cnt < 64) begin  // 32 chars * 2 nibbles = 64
-                            case (step_cnt[0])
-                                0: begin  // High nibble with EN high
-                                    send_nibble(message[step_cnt[6:1]][7:4], 1, 1);
-                                    step_cnt <= step_cnt + 1;
-                                end
-                                1: begin  // High nibble with EN low, then low nibble
-                                    if (step_cnt[1]) begin
-                                        send_nibble(message[step_cnt[6:1]][7:4], 1, 0);
-                                    end else begin
-                                        send_nibble(message[step_cnt[6:1]][3:0], 1, 1);
-                                    end
-                                    step_cnt <= step_cnt + 1;
-                                end
-                            endcase
-                        end else if (step_cnt == 64) begin
-                            // Move to line 2 (0xC0)
-                            send_nibble(4'hC, 0, 1);
-                            step_cnt <= step_cnt + 1;
-                        end else if (step_cnt == 65) begin
-                            send_nibble(4'hC, 0, 0);
-                            step_cnt <= step_cnt + 1;
-                        end else if (step_cnt == 66) begin
-                            send_nibble(4'h0, 0, 1);
-                            step_cnt <= step_cnt + 1;
-                        end else if (step_cnt == 67) begin
-                            send_nibble(4'h0, 0, 0);
-                            step_cnt <= 68;
-                        end else if (step_cnt < 132) begin  // Another 32 chars * 2
-                            case (step_cnt[0])
-                                0: begin
-                                    send_nibble(message[(step_cnt-68)>>1][7:4], 1, 1);
-                                    step_cnt <= step_cnt + 1;
-                                end
-                                1: begin
-                                    if (step_cnt[1]) begin
-                                        send_nibble(message[(step_cnt-68)>>1][7:4], 1, 0);
-                                    end else begin
-                                        send_nibble(message[(step_cnt-68)>>1][3:0], 1, 1);
-                                    end
-                                    step_cnt <= step_cnt + 1;
-                                end
-                            endcase
-                        end else begin
-                            state <= DONE;
-                        end
-                    end
-                    
-                    if (i2c_busy) i2c_ena <= 0;
-                end
-                
-                DONE: begin
-                    i2c_ena <= 0;
-                end
-            endcase
-        end
-    end
-    
-    // I2C master
-    i2c_master #(
-        .input_clk(100_000_000), 
-        .bus_clk(50_000)  // Slower 50kHz
-    ) i2c (
+    i2c_lcd_2004 #(
+        .I2C_ADDR(I2C_ADDR)
+    ) lcd (
         .clk(clk),
-        .reset_n(~rst),
-        .ena(i2c_ena),
-        .addr(I2C_ADDR),
-        .rw(1'b0),
-        .data_wr(i2c_data_wr),
-        .busy(i2c_busy),
-        .ack_error(i2c_ack_error),
-        .sda(sda),
-        .scl(scl)
+        .rst(rst),
+        .scl(scl),
+        .sda_out(sda_out),
+        .sda_in(sda),
+        .sda_en(sda_en),
+        .state_debug(state_debug)
     );
 
 endmodule
 
-// I2C Master Controller
-module i2c_master #(
-    parameter input_clk = 100_000_000,
-    parameter bus_clk = 100_000
+module i2c_lcd_2004 #(
+    parameter I2C_ADDR = 7'h27
 )(
-    input clk,
-    input reset_n,
-    input ena,
-    input [6:0] addr,
-    input rw,
-    input [7:0] data_wr,
-    output reg busy,
-    output reg ack_error,
-    inout sda,
-    output scl
+    input wire clk,
+    input wire rst,
+    output wire scl,
+    output wire sda_out,
+    input wire sda_in,
+    output wire sda_en,
+    output wire [7:0] state_debug
 );
 
-    localparam divider = (input_clk/bus_clk)/4;
+    // I2C LCD uses PCF8574 with this bit mapping:
+    // Bit 7: D7, Bit 6: D6, Bit 5: D5, Bit 4: D4
+    // Bit 3: Backlight, Bit 2: E (Enable), Bit 1: RW, Bit 0: RS
+    localparam BL = 3, EN = 2, RW = 1, RS = 0;
     
-    localparam READY = 0, START = 1, COMMAND = 2, SLV_ACK1 = 3;
-    localparam WR = 4, SLV_ACK2 = 5, STOP = 6;
+    // States
+    localparam INIT = 0, SEND_HIGH_NIBBLE = 1, CLEAR_E1 = 2, 
+               SEND_LOW_NIBBLE = 3, CLEAR_E2 = 4, DELAY_STATE = 5,
+               SEND_DATA_HIGH = 6, CLEAR_DE1 = 7, SEND_DATA_LOW = 8, 
+               CLEAR_DE2 = 9, DONE = 10, IDLE = 11;
     
-    reg [2:0] state;
-    reg [15:0] count;
-    reg scl_clk;
-    reg scl_ena;
-    reg sda_int;
-    reg sda_ena_n;
-    reg [7:0] addr_rw;
-    reg [7:0] data_tx;
-    reg [2:0] bit_cnt;
-    wire sda_in;
+    reg [7:0] state;
+    reg [31:0] delay_cnt;
+    reg [7:0] init_step;
+    reg [7:0] char_index;
     
-    assign scl = (scl_ena == 1'b0) ? 1'b1 : scl_clk;
-    assign sda = (sda_ena_n == 1'b0) ? sda_int : 1'bz;
-    assign sda_in = sda;
+    // I2C signals
+    reg i2c_start;
+    reg [7:0] i2c_data;
+    wire i2c_busy;
+    wire i2c_done;
     
-    always @(posedge clk or negedge reset_n) begin
-        if (!reset_n) begin
-            count <= 0;
-            scl_clk <= 1'b1;
-        end else begin
-            if (count == divider - 1) begin
-                count <= 0;
-                scl_clk <= ~scl_clk;
-            end else begin
-                count <= count + 1;
-            end
-        end
+    // Internal I2C signals (driven by i2c_master)
+    wire scl_internal;
+    wire sda_out_internal;
+    wire sda_en_internal;
+    
+    // LCD command/data registers
+    reg [7:0] current_cmd;
+    reg [7:0] current_data;
+    reg is_data_mode;  // 0 = command, 1 = data
+    
+    // Text to display: "Hello World!" on line 1, "I2C LCD 2004!" on line 2
+    reg [7:0] text_mem [0:31];
+    initial begin
+        // Line 1: "    Hello World!    "
+        text_mem[0]  = " "; text_mem[1]  = " "; text_mem[2]  = " "; text_mem[3]  = " ";
+        text_mem[4]  = "H"; text_mem[5]  = "e"; text_mem[6]  = "l"; text_mem[7]  = "l";
+        text_mem[8]  = "o"; text_mem[9]  = " "; text_mem[10] = "W"; text_mem[11] = "o";
+        text_mem[12] = "r"; text_mem[13] = "l"; text_mem[14] = "d"; text_mem[15] = "!";
+        text_mem[16] = " "; text_mem[17] = " "; text_mem[18] = " "; text_mem[19] = " ";
+        // Line 2: "  I2C LCD 2004!     "
+        text_mem[20] = " "; text_mem[21] = " "; text_mem[22] = "I"; text_mem[23] = "2";
+        text_mem[24] = "C"; text_mem[25] = " "; text_mem[26] = "L"; text_mem[27] = "C";
+        text_mem[28] = "D"; text_mem[29] = " "; text_mem[30] = "2"; text_mem[31] = "0";
     end
     
-    always @(posedge clk or negedge reset_n) begin
-        if (!reset_n) begin
-            state <= READY;
-            busy <= 1'b0;
-            scl_ena <= 1'b0;
-            sda_int <= 1'b1;
-            sda_ena_n <= 1'b1;
-            ack_error <= 1'b0;
-            bit_cnt <= 7;
+    assign state_debug = state;
+    
+    // I2C master module instance
+    i2c_master i2c (
+        .clk(clk),
+        .rst(rst),
+        .start(i2c_start),
+        .addr(I2C_ADDR),
+        .data(i2c_data),
+        .scl(scl_internal),
+        .sda_out(sda_out_internal),
+        .sda_in(sda_in),
+        .sda_en(sda_en_internal),
+        .busy(i2c_busy),
+        .done(i2c_done)
+    );
+    
+    // Connect internal signals to output ports
+    assign scl = scl_internal;
+    assign sda_out = sda_out_internal;
+    assign sda_en = sda_en_internal;
+    
+    // Main state machine
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            state <= INIT;
+            delay_cnt <= 0;
+            init_step <= 0;
+            char_index <= 0;
+            i2c_start <= 0;
+            current_cmd <= 0;
+            current_data <= 0;
+            is_data_mode <= 0;
         end else begin
-            if (count == divider - 1) begin
-                case (state)
-                    READY: begin
-                        if (ena) begin
-                            busy <= 1'b1;
-                            addr_rw <= {addr, rw};
-                            data_tx <= data_wr;
-                            state <= START;
-                        end else begin
-                            busy <= 1'b0;
-                            scl_ena <= 1'b0;
+            i2c_start <= 0;  // Default: don't start I2C
+            
+            case (state)
+                INIT: begin
+                    // Wait 50ms for LCD power up (100MHz * 0.05s = 5,000,000)
+                    if (delay_cnt < 5000000) begin
+                        delay_cnt <= delay_cnt + 1;
+                    end else begin
+                        delay_cnt <= 0;
+                        init_step <= 0;
+                        is_data_mode <= 0;
+                        state <= SEND_HIGH_NIBBLE;
+                    end
+                end
+                
+                SEND_HIGH_NIBBLE: begin
+                    if (!i2c_busy) begin
+                        case (init_step)
+                            0: current_cmd <= 8'h33;  // Init
+                            1: current_cmd <= 8'h32;  // 4-bit mode
+                            2: current_cmd <= 8'h28;  // 2 lines, 5x8
+                            3: current_cmd <= 8'h0C;  // Display ON
+                            4: current_cmd <= 8'h06;  // Entry mode
+                            5: current_cmd <= 8'h01;  // Clear
+                            6: current_cmd <= 8'h80;  // Set cursor line 1
+                            default: begin
+                                // Init complete, start writing text
+                                char_index <= 0;
+                                is_data_mode <= 1;
+                                current_data <= text_mem[0];
+                                state <= SEND_DATA_HIGH;
+                            end
+                        endcase
+                        
+                        if (init_step <= 6) begin
+                            // Send high nibble with E=1, RS=0 (command mode)
+                            i2c_data <= {current_cmd[7:4], 1'b1, 1'b1, 1'b0, 1'b0};  // BL=1, E=1, RW=0, RS=0
+                            i2c_start <= 1;
+                            state <= CLEAR_E1;
                         end
                     end
-                    
-                    START: begin
-                        busy <= 1'b1;
-                        scl_ena <= 1'b1;
-                        sda_ena_n <= 1'b0;
-                        sda_int <= 1'b0;
-                        ack_error <= 1'b0;
-                        state <= COMMAND;
-                        bit_cnt <= 7;
+                end
+                
+                CLEAR_E1: begin
+                    if (i2c_done && !i2c_busy) begin
+                        // Clear E after high nibble
+                        i2c_data <= {current_cmd[7:4], 1'b1, 1'b0, 1'b0, 1'b0};  // E=0
+                        i2c_start <= 1;
+                        state <= SEND_LOW_NIBBLE;
                     end
-                    
-                    COMMAND: begin
-                        sda_int <= addr_rw[bit_cnt];
-                        if (bit_cnt == 0) begin
-                            bit_cnt <= 7;
-                            state <= SLV_ACK1;
+                end
+                
+                SEND_LOW_NIBBLE: begin
+                    if (i2c_done && !i2c_busy) begin
+                        // Send low nibble with E=1
+                        i2c_data <= {current_cmd[3:0], 1'b1, 1'b1, 1'b0, 1'b0};  // E=1
+                        i2c_start <= 1;
+                        state <= CLEAR_E2;
+                    end
+                end
+                
+                CLEAR_E2: begin
+                    if (i2c_done && !i2c_busy) begin
+                        // Clear E after low nibble
+                        i2c_data <= {current_cmd[3:0], 1'b1, 1'b0, 1'b0, 1'b0};  // E=0
+                        i2c_start <= 1;
+                        state <= DELAY_STATE;
+                    end
+                end
+                
+                DELAY_STATE: begin
+                    if (i2c_done) begin
+                        if (init_step == 5) begin
+                            // Clear command needs longer delay (2ms = 200,000 cycles)
+                            if (delay_cnt < 200000) begin
+                                delay_cnt <= delay_cnt + 1;
+                            end else begin
+                                delay_cnt <= 0;
+                                init_step <= init_step + 1;
+                                state <= SEND_HIGH_NIBBLE;
+                            end
+                        end else if (init_step == 7) begin
+                            // Cursor command delay (500us)
+                            if (delay_cnt < 50000) begin
+                                delay_cnt <= delay_cnt + 1;
+                            end else begin
+                                delay_cnt <= 0;
+                                init_step <= 20;  // Mark as in data mode
+                                is_data_mode <= 1;
+                                state <= SEND_DATA_HIGH;
+                            end
+                        end else if (init_step >= 20) begin
+                            // Data delay (100us)
+                            if (delay_cnt < 10000) begin
+                                delay_cnt <= delay_cnt + 1;
+                            end else begin
+                                delay_cnt <= 0;
+                                state <= SEND_DATA_HIGH;
+                            end
                         end else begin
-                            bit_cnt <= bit_cnt - 1;
+                            // Delay between init commands (500us = 50,000 cycles)
+                            if (delay_cnt < 50000) begin
+                                delay_cnt <= delay_cnt + 1;
+                            end else begin
+                                delay_cnt <= 0;
+                                if (init_step < 6) begin
+                                    init_step <= init_step + 1;
+                                    state <= SEND_HIGH_NIBBLE;
+                                end else begin
+                                    // Init complete, start writing text
+                                    char_index <= 0;
+                                    is_data_mode <= 1;
+                                    current_data <= text_mem[0];
+                                    state <= SEND_DATA_HIGH;
+                                end
+                            end
                         end
                     end
-                    
-                    SLV_ACK1: begin
-                        sda_ena_n <= 1'b1;
-                        ack_error <= sda_in;
-                        if (rw == 1'b0) begin
-                            state <= WR;
+                end
+                
+                SEND_DATA_HIGH: begin
+                    if (!i2c_busy) begin
+                        if (char_index < 20) begin
+                            // Write first line
+                            current_data <= text_mem[char_index];
+                            // Send high nibble with RS=1 (data mode)
+                            i2c_data <= {text_mem[char_index][7:4], 1'b1, 1'b1, 1'b0, 1'b1};  // BL=1, E=1, RW=0, RS=1
+                            i2c_start <= 1;
+                            state <= CLEAR_DE1;
+                        end else if (char_index == 20) begin
+                            // Move to second line
+                            is_data_mode <= 0;
+                            current_cmd <= 8'hC0;  // Line 2 address
+                            init_step <= 7;  // Special marker for cursor command
+                            state <= SEND_HIGH_NIBBLE;
+                        end else if (char_index < 32) begin
+                            // Write second line
+                            current_data <= text_mem[char_index];
+                            // Send high nibble with RS=1
+                            i2c_data <= {text_mem[char_index][7:4], 1'b1, 1'b1, 1'b0, 1'b1};  // BL=1, E=1, RW=0, RS=1
+                            i2c_start <= 1;
+                            state <= CLEAR_DE1;
                         end else begin
-                            state <= STOP;
+                            state <= DONE;
                         end
                     end
-                    
-                    WR: begin
-                        busy <= 1'b1;
-                        sda_ena_n <= 1'b0;
-                        sda_int <= data_tx[bit_cnt];
-                        if (bit_cnt == 0) begin
-                            bit_cnt <= 7;
-                            state <= SLV_ACK2;
+                end
+                
+                CLEAR_DE1: begin
+                    if (i2c_done && !i2c_busy) begin
+                        // Clear E after high nibble of data
+                        i2c_data <= {current_data[7:4], 1'b1, 1'b0, 1'b0, 1'b1};  // E=0
+                        i2c_start <= 1;
+                        state <= SEND_DATA_LOW;
+                    end
+                end
+                
+                SEND_DATA_LOW: begin
+                    if (i2c_done && !i2c_busy) begin
+                        // Send low nibble with E=1
+                        i2c_data <= {current_data[3:0], 1'b1, 1'b1, 1'b0, 1'b1};  // E=1
+                        i2c_start <= 1;
+                        state <= CLEAR_DE2;
+                    end
+                end
+                
+                CLEAR_DE2: begin
+                    if (i2c_done && !i2c_busy) begin
+                        // Clear E after low nibble, data complete
+                        i2c_data <= {current_data[3:0], 1'b1, 1'b0, 1'b0, 1'b1};  // E=0
+                        i2c_start <= 1;
+                        delay_cnt <= 0;
+                        char_index <= char_index + 1;
+                        is_data_mode <= 1;
+                        state <= DELAY_STATE;
+                    end
+                end
+                
+                DONE: begin
+                    state <= IDLE;
+                end
+                
+                IDLE: begin
+                    // Stay idle
+                end
+            endcase
+            
+        end
+    end
+
+endmodule
+
+// Simple I2C Master
+module i2c_master(
+    input wire clk,
+    input wire rst,
+    input wire start,
+    input wire [6:0] addr,
+    input wire [7:0] data,
+    output reg scl,
+    output reg sda_out,
+    input wire sda_in,
+    output reg sda_en,
+    output reg busy,
+    output reg done
+);
+
+    localparam IDLE = 0, START_BIT = 1, ADDR_BITS = 2, 
+               DATA_BITS = 3, ACK_BIT = 4, STOP_BIT = 5;
+    
+    reg [3:0] state;
+    reg [3:0] bit_cnt;
+    reg [15:0] clk_cnt;
+    reg [7:0] data_buf;
+    reg [6:0] addr_buf;
+    reg ack_after_addr;
+    
+    // I2C clock ~100kHz (100MHz / 1000 = 100kHz)
+    localparam CLK_DIV = 500;
+    
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            state <= IDLE;
+            scl <= 1;
+            sda_out <= 1;
+            sda_en <= 1;
+            busy <= 0;
+            done <= 0;
+            bit_cnt <= 0;
+            clk_cnt <= 0;
+            ack_after_addr <= 0;
+        end else begin
+            done <= 0;
+            
+            case (state)
+                IDLE: begin
+                    scl <= 1;
+                    sda_out <= 1;
+                    sda_en <= 1;
+                    if (start) begin
+                        data_buf <= data;
+                        addr_buf <= addr;
+                        busy <= 1;
+                        state <= START_BIT;
+                        clk_cnt <= 0;
+                        ack_after_addr <= 0;
+                    end
+                end
+                
+                START_BIT: begin
+                    if (clk_cnt < CLK_DIV/2) begin
+                        clk_cnt <= clk_cnt + 1;
+                        sda_out <= 0;  // Start condition: SDA goes low while SCL is high
+                    end else begin
+                        clk_cnt <= 0;
+                        bit_cnt <= 0;
+                        state <= ADDR_BITS;
+                    end
+                end
+                
+                ADDR_BITS: begin
+                    if (clk_cnt < CLK_DIV/4) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        if (bit_cnt < 7)
+                            sda_out <= addr_buf[6 - bit_cnt];
+                        else
+                            sda_out <= 0;  // Write bit (0 = write)
+                    end else if (clk_cnt < 3*CLK_DIV/4) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 1;
+                    end else begin
+                        clk_cnt <= 0;
+                        if (bit_cnt < 7) begin
+                            bit_cnt <= bit_cnt + 1;
                         end else begin
-                            bit_cnt <= bit_cnt - 1;
+                            bit_cnt <= 0;
+                            ack_after_addr <= 1;
+                            state <= ACK_BIT;
                         end
                     end
-                    
-                    SLV_ACK2: begin
-                        sda_ena_n <= 1'b1;
-                        state <= STOP;
+                end
+                
+                ACK_BIT: begin
+                    if (clk_cnt < CLK_DIV/4) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        sda_en <= 0;  // Release SDA for ACK
+                    end else if (clk_cnt < 3*CLK_DIV/4) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 1;
+                    end else begin
+                        clk_cnt <= 0;
+                        sda_en <= 1;
+                        sda_out <= 1;
+                        if (ack_after_addr) begin
+                            // ACK after address, send data
+                            ack_after_addr <= 0;
+                            bit_cnt <= 0;
+                            state <= DATA_BITS;
+                        end else begin
+                            // ACK after data, send stop
+                            state <= STOP_BIT;
+                        end
                     end
-                    
-                    STOP: begin
-                        busy <= 1'b0;
-                        sda_ena_n <= 1'b0;
-                        sda_int <= 1'b1;
-                        state <= READY;
+                end
+                
+                DATA_BITS: begin
+                    if (clk_cnt < CLK_DIV/4) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        sda_out <= data_buf[7 - bit_cnt];
+                    end else if (clk_cnt < 3*CLK_DIV/4) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 1;
+                    end else begin
+                        clk_cnt <= 0;
+                        if (bit_cnt < 7) begin
+                            bit_cnt <= bit_cnt + 1;
+                        end else begin
+                            bit_cnt <= 0;
+                            ack_after_addr <= 0;
+                            state <= ACK_BIT;
+                        end
                     end
-                endcase
-            end
+                end
+                
+                STOP_BIT: begin
+                    if (clk_cnt < CLK_DIV/4) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        sda_out <= 0;
+                    end else if (clk_cnt < CLK_DIV/2) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 1;
+                    end else begin
+                        clk_cnt <= 0;
+                        sda_out <= 1;  // Stop condition: SDA goes high while SCL is high
+                        done <= 1;
+                        busy <= 0;
+                        state <= IDLE;
+                    end
+                end
+            endcase
         end
     end
 
