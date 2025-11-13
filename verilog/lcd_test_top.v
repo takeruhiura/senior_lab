@@ -92,7 +92,7 @@ module simple_lcd_test #(
             
             case (state)
                 WAIT_POWER: begin
-                    if (counter < 10_000_000) // 100ms
+                    if (counter < 1_000_000) // 10ms - much shorter delay
                         counter <= counter + 1;
                     else begin
                         counter <= 0;
