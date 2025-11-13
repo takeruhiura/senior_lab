@@ -7,7 +7,7 @@ module lcd_test_top (
     output wire [15:0] led
 );
 
-    localparam I2C_ADDR = 7'27;  // I2C address for LCD (try 0x27 if this doesn't work)
+    localparam I2C_ADDR = 7'h20;  // Your detected address
     
     // State machine
     localparam IDLE = 0, INIT = 1, WRITE = 2, DONE = 3;
@@ -47,12 +47,14 @@ module lcd_test_top (
     assign led[15] = (state == DONE);
     
     // Send 4-bit command via I2C
+    // Try reversed control bits: RS and EN might be swapped
     task send_nibble;
         input [3:0] data;
         input rs;
         input en;
         begin
-            i2c_data_wr <= {data, 1'b1, en, 1'b0, rs}; // backlight=1, rw=0
+            // Swap RS and EN positions
+            i2c_data_wr <= {data[3], data[2], data[1], data[0], 1'b1, rs, 1'b0, en};
             i2c_ena <= 1;
         end
     endtask
