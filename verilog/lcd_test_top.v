@@ -1,23 +1,31 @@
-module lcd_test_top(
-    input wire clk,
-    input wire rst,
-    inout wire sda,
-    output wire scl,
-    output wire [15:0] led
+module oled_test_top(
+    input wire clk,           // 100MHz clock
+    input wire rst,           // Reset button (BTNC)
+    inout wire sda,           // I2C data
+    output wire scl,          // I2C clock
+    output wire [15:0] led    // Debug LEDs
 );
 
-    parameter I2C_ADDR = 7'h20;  // Your detected address
+    // SSD1306 OLED I2C address (try 0x3C, if doesn't work try 0x3D)
+    parameter I2C_ADDR = 7'h3C;  // Common: 0x3C or 0x3D
     
     wire sda_out, sda_en;
     wire [7:0] state_debug;
+    wire scl_out;
     
+    // Tri-state SDA
     assign sda = sda_en ? sda_out : 1'bz;
+    assign scl = scl_out;
+    
+    // Debug LEDs show state
     assign led = {8'h00, state_debug};
     
-    simple_lcd_test #(.I2C_ADDR(I2C_ADDR)) lcd (
+    ssd1306_oled #(
+        .I2C_ADDR(I2C_ADDR)
+    ) oled (
         .clk(clk),
         .rst(rst),
-        .scl(scl),
+        .scl(scl_out),
         .sda_out(sda_out),
         .sda_in(sda),
         .sda_en(sda_en),
@@ -26,8 +34,8 @@ module lcd_test_top(
 
 endmodule
 
-module simple_lcd_test #(
-    parameter I2C_ADDR = 7'h20
+module ssd1306_oled #(
+    parameter I2C_ADDR = 7'h3C
 )(
     input wire clk,
     input wire rst,
@@ -38,367 +46,273 @@ module simple_lcd_test #(
     output wire [7:0] state_debug
 );
 
-    localparam IDLE = 0;
-    localparam WAIT_POWER = 1;
-    localparam INIT_1 = 2;
-    localparam INIT_2 = 3;
-    localparam INIT_3 = 4;
-    localparam FUNC_SET = 5;
-    localparam DISPLAY_ON = 6;
-    localparam CLEAR = 7;
-    localparam WRITE_CHAR = 8;
-    localparam DONE = 9;
+    // States
+    localparam IDLE = 0, INIT = 1, SEND_CMD = 2, SEND_DATA = 3, 
+               CLEAR_SCREEN = 4, WRITE_TEXT = 5, DONE = 6, WAIT = 7;
     
-    reg [3:0] state;
-    reg [31:0] counter;
-    reg [7:0] cmd_data;
-    reg [3:0] nibble_state;
-    reg i2c_go;
+    reg [7:0] state;
+    reg [31:0] delay_cnt;
+    reg [7:0] init_step;
+    reg [15:0] pixel_index;
     
+    // I2C control signals
+    reg i2c_start;
+    reg [7:0] i2c_data;
+    reg is_command;  // 0 = command, 1 = data
     wire i2c_busy;
     wire i2c_done;
     
     assign state_debug = state;
     
-    // I2C master
-    wire scl_int, sda_out_int, sda_en_int;
-    assign scl = scl_int;
-    assign sda_out = sda_out_int;
-    assign sda_en = sda_en_int;
+    // SSD1306 initialization commands
+    reg [7:0] init_cmds [0:25];
+    initial begin
+        init_cmds[0]  = 8'hAE; // Display OFF
+        init_cmds[1]  = 8'hD5; // Set display clock divide
+        init_cmds[2]  = 8'h80; // Suggested ratio
+        init_cmds[3]  = 8'hA8; // Set multiplex
+        init_cmds[4]  = 8'h3F; // 1/64 duty
+        init_cmds[5]  = 8'hD3; // Set display offset
+        init_cmds[6]  = 8'h00; // No offset
+        init_cmds[7]  = 8'h40; // Set start line
+        init_cmds[8]  = 8'h8D; // Charge pump
+        init_cmds[9]  = 8'h14; // Enable charge pump
+        init_cmds[10] = 8'h20; // Memory mode
+        init_cmds[11] = 8'h00; // Horizontal addressing
+        init_cmds[12] = 8'hA1; // Set segment remap
+        init_cmds[13] = 8'hC8; // Set COM output scan direction
+        init_cmds[14] = 8'hDA; // Set COM pins
+        init_cmds[15] = 8'h12; // Alternative COM pin config
+        init_cmds[16] = 8'h81; // Set contrast
+        init_cmds[17] = 8'hCF; // Max contrast
+        init_cmds[18] = 8'hD9; // Set precharge
+        init_cmds[19] = 8'hF1; // 
+        init_cmds[20] = 8'hDB; // Set VCOMH deselect
+        init_cmds[21] = 8'h40; // 
+        init_cmds[22] = 8'hA4; // Display all on resume
+        init_cmds[23] = 8'hA6; // Normal display (not inverted)
+        init_cmds[24] = 8'h2E; // Deactivate scroll
+        init_cmds[25] = 8'hAF; // Display ON
+    end
     
-    i2c_master i2c (
+    // Simple 5x8 font for "Hello World!"
+    // Each character is 5 bytes wide
+    reg [7:0] char_H [0:4]; reg [7:0] char_e [0:4]; reg [7:0] char_l [0:4];
+    reg [7:0] char_o [0:4]; reg [7:0] char_W [0:4]; reg [7:0] char_r [0:4];
+    reg [7:0] char_d [0:4]; reg [7:0] char_spc [0:4]; reg [7:0] char_exc [0:4];
+    
+    initial begin
+        // H
+        char_H[0] = 8'b01111111; char_H[1] = 8'b00001000; char_H[2] = 8'b00001000;
+        char_H[3] = 8'b00001000; char_H[4] = 8'b01111111;
+        // e
+        char_e[0] = 8'b00111000; char_e[1] = 8'b01010100; char_e[2] = 8'b01010100;
+        char_e[3] = 8'b01010100; char_e[4] = 8'b00011000;
+        // l
+        char_l[0] = 8'b00000000; char_l[1] = 8'b01000001; char_l[2] = 8'b01111111;
+        char_l[3] = 8'b01000000; char_l[4] = 8'b00000000;
+        // o
+        char_o[0] = 8'b00111000; char_o[1] = 8'b01000100; char_o[2] = 8'b01000100;
+        char_o[3] = 8'b01000100; char_o[4] = 8'b00111000;
+        // space
+        char_spc[0] = 8'b00000000; char_spc[1] = 8'b00000000; char_spc[2] = 8'b00000000;
+        char_spc[3] = 8'b00000000; char_spc[4] = 8'b00000000;
+        // W
+        char_W[0] = 8'b01111111; char_W[1] = 8'b00100000; char_W[2] = 8'b00011000;
+        char_W[3] = 8'b00100000; char_W[4] = 8'b01111111;
+        // r
+        char_r[0] = 8'b01111100; char_r[1] = 8'b00001000; char_r[2] = 8'b00000100;
+        char_r[3] = 8'b00000100; char_r[4] = 8'b00001000;
+        // d
+        char_d[0] = 8'b00111000; char_d[1] = 8'b01000100; char_d[2] = 8'b01000100;
+        char_d[3] = 8'b01000100; char_d[4] = 8'b01111111;
+        // !
+        char_exc[0] = 8'b00000000; char_exc[1] = 8'b00000000; char_exc[2] = 8'b01011111;
+        char_exc[3] = 8'b00000000; char_exc[4] = 8'b00000000;
+    end
+    
+    reg [7:0] text_string [0:11];
+    reg [3:0] char_byte;
+    
+    initial begin
+        text_string[0] = 0;  // H
+        text_string[1] = 1;  // e
+        text_string[2] = 2;  // l
+        text_string[3] = 2;  // l
+        text_string[4] = 3;  // o
+        text_string[5] = 4;  // space
+        text_string[6] = 5;  // W
+        text_string[7] = 3;  // o
+        text_string[8] = 6;  // r
+        text_string[9] = 2;  // l
+        text_string[10] = 7; // d
+        text_string[11] = 8; // !
+    end
+    
+    // I2C master instance
+    i2c_master_oled i2c (
         .clk(clk),
         .rst(rst),
-        .start(i2c_go),
+        .start(i2c_start),
         .addr(I2C_ADDR),
-        .data(cmd_data),
-        .scl(scl_int),
-        .sda_out(sda_out_int),
+        .data(i2c_data),
+        .is_cmd(~is_command),
+        .scl(scl),
+        .sda_out(sda_out),
         .sda_in(sda_in),
-        .sda_en(sda_en_int),
+        .sda_en(sda_en),
         .busy(i2c_busy),
         .done(i2c_done)
     );
     
-    // Simple state machine
+    // Get character bitmap
+    function [7:0] get_char_byte;
+        input [7:0] char_idx;
+        input [2:0] byte_idx;
+        begin
+            case (char_idx)
+                0: get_char_byte = char_H[byte_idx];
+                1: get_char_byte = char_e[byte_idx];
+                2: get_char_byte = char_l[byte_idx];
+                3: get_char_byte = char_o[byte_idx];
+                4: get_char_byte = char_spc[byte_idx];
+                5: get_char_byte = char_W[byte_idx];
+                6: get_char_byte = char_r[byte_idx];
+                7: get_char_byte = char_d[byte_idx];
+                8: get_char_byte = char_exc[byte_idx];
+                default: get_char_byte = 8'h00;
+            endcase
+        end
+    endfunction
+    
+    // Main state machine
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            state <= WAIT_POWER;
-            counter <= 0;
-            nibble_state <= 0;
-            i2c_go <= 0;
+            state <= IDLE;
+            delay_cnt <= 0;
+            init_step <= 0;
+            pixel_index <= 0;
+            i2c_start <= 0;
+            is_command <= 0;
+            char_byte <= 0;
         end else begin
-            i2c_go <= 0;
-            
             case (state)
-                WAIT_POWER: begin
-                    if (counter < 1_000_000) // 10ms - much shorter delay
-                        counter <= counter + 1;
-                    else begin
-                        counter <= 0;
-                        state <= INIT_1;
-                        nibble_state <= 0;
+                IDLE: begin
+                    if (delay_cnt < 1000000) begin  // Wait 10ms
+                        delay_cnt <= delay_cnt + 1;
+                    end else begin
+                        delay_cnt <= 0;
+                        state <= INIT;
                     end
                 end
                 
-                INIT_1: begin
-                    case (nibble_state)
-                        0: begin
-                            if (!i2c_busy) begin
-                                cmd_data <= 8'b00111000;  // 0x38, with backlight bit on
-                                i2c_go <= 1;
-                                nibble_state <= 1;
-                            end
-                        end
-                        1: begin
-                            if (i2c_done) nibble_state <= 2;
-                        end
-                        2: begin
-                            if (!i2c_busy) begin
-                                cmd_data <= 8'b00101000;  // E=0, backlight still on
-                                i2c_go <= 1;
-                                nibble_state <= 3;
-                            end
-                        end
-                        3: begin
-                            if (i2c_done) begin
-                                if (counter < 5_000_000) // 50ms
-                                    counter <= counter + 1;
-                                else begin
-                                    counter <= 0;
-                                    nibble_state <= 0;
-                                    state <= INIT_2;
-                                end
-                            end
-                        end
-                    endcase
+                INIT: begin
+                    if (!i2c_busy && init_step < 26) begin
+                        i2c_data <= init_cmds[init_step];
+                        is_command <= 0;  // Command mode
+                        i2c_start <= 1;
+                        state <= WAIT;
+                    end else if (init_step >= 26) begin
+                        init_step <= 0;
+                        pixel_index <= 0;
+                        state <= CLEAR_SCREEN;
+                    end
                 end
                 
-                INIT_2: begin
-                    case (nibble_state)
-                        0: begin
-                            if (!i2c_busy) begin
-                                cmd_data <= 8'b00111000;  // Backlight ON
-                                i2c_go <= 1;
-                                nibble_state <= 1;
-                            end
-                        end
-                        1: begin
-                            if (i2c_done) nibble_state <= 2;
-                        end
-                        2: begin
-                            if (!i2c_busy) begin
-                                cmd_data <= 8'b00101000;  // Backlight ON
-                                i2c_go <= 1;
-                                nibble_state <= 3;
-                            end
-                        end
-                        3: begin
-                            if (i2c_done) begin
-                                if (counter < 1_000_000) // 10ms
-                                    counter <= counter + 1;
-                                else begin
-                                    counter <= 0;
-                                    nibble_state <= 0;
-                                    state <= INIT_3;
-                                end
-                            end
-                        end
-                    endcase
+                CLEAR_SCREEN: begin
+                    if (!i2c_busy && pixel_index < 1024) begin  // 128x64/8 = 1024 bytes
+                        i2c_data <= 8'h00;  // Clear pixel
+                        is_command <= 1;  // Data mode
+                        i2c_start <= 1;
+                        pixel_index <= pixel_index + 1;
+                        state <= WAIT;
+                    end else if (pixel_index >= 1024) begin
+                        // Set cursor to row 3 (byte 3), column 20
+                        pixel_index <= 0;
+                        char_byte <= 0;
+                        state <= WRITE_TEXT;
+                    end
                 end
                 
-                INIT_3: begin
-                    case (nibble_state)
-                        0: begin
-                            if (!i2c_busy) begin
-                                cmd_data <= 8'b00100000;  // 4-bit mode
-                                i2c_go <= 1;
-                                nibble_state <= 1;
+                WRITE_TEXT: begin
+                    if (!i2c_busy) begin
+                        if (pixel_index == 0 && char_byte == 0) begin
+                            // Set page (row) to 3
+                            i2c_data <= 8'hB3;  // Page 3
+                            is_command <= 0;
+                            i2c_start <= 1;
+                            char_byte <= 1;
+                            state <= WAIT;
+                        end else if (pixel_index == 0 && char_byte == 1) begin
+                            // Set column to 20
+                            i2c_data <= 8'h00 | (20 & 8'h0F);  // Lower nibble
+                            is_command <= 0;
+                            i2c_start <= 1;
+                            char_byte <= 2;
+                            state <= WAIT;
+                        end else if (pixel_index == 0 && char_byte == 2) begin
+                            i2c_data <= 8'h10 | ((20 >> 4) & 8'h0F);  // Upper nibble
+                            is_command <= 0;
+                            i2c_start <= 1;
+                            char_byte <= 0;
+                            pixel_index <= 1;
+                            state <= WAIT;
+                        end else if (pixel_index > 0 && pixel_index <= 12) begin
+                            // Write characters
+                            if (char_byte < 5) begin
+                                i2c_data <= get_char_byte(text_string[pixel_index-1], char_byte);
+                                is_command <= 1;  // Data mode
+                                i2c_start <= 1;
+                                char_byte <= char_byte + 1;
+                                state <= WAIT;
+                            end else begin
+                                // Add space between characters
+                                i2c_data <= 8'h00;
+                                is_command <= 1;
+                                i2c_start <= 1;
+                                char_byte <= 0;
+                                pixel_index <= pixel_index + 1;
+                                state <= WAIT;
                             end
+                        end else begin
+                            state <= DONE;
                         end
-                        1: begin
-                            if (i2c_done) nibble_state <= 2;
-                        end
-                        2: begin
-                            if (!i2c_busy) begin
-                                cmd_data <= 8'b00000000;
-                                i2c_go <= 1;
-                                nibble_state <= 3;
-                            end
-                        end
-                        3: begin
-                            if (i2c_done) begin
-                                if (counter < 1_000_000)
-                                    counter <= counter + 1;
-                                else begin
-                                    counter <= 0;
-                                    nibble_state <= 0;
-                                    state <= FUNC_SET;
-                                end
-                            end
-                        end
-                    endcase
+                    end
                 end
                 
-                FUNC_SET: begin // Send 0x28 (2 lines, 5x8)
-                    case (nibble_state)
-                        0: begin
-                            if (!i2c_busy) begin
-                                cmd_data <= 8'b00101000;  // High nibble: 0010, E=1
-                                i2c_go <= 1;
-                                nibble_state <= 1;
-                            end
+                WAIT: begin
+                    i2c_start <= 0;
+                    if (i2c_done) begin
+                        if (state == WAIT && init_step < 26 && pixel_index == 0) begin
+                            init_step <= init_step + 1;
+                            state <= INIT;
+                        end else if (state == WAIT && pixel_index < 1024 && init_step >= 26) begin
+                            state <= CLEAR_SCREEN;
+                        end else if (state == WAIT && pixel_index > 0) begin
+                            state <= WRITE_TEXT;
+                        end else begin
+                            state <= INIT;
                         end
-                        1: if (i2c_done) nibble_state <= 2;
-                        2: begin
-                            if (!i2c_busy) begin
-                                cmd_data <= 8'b00001000;  // E=0
-                                i2c_go <= 1;
-                                nibble_state <= 3;
-                            end
-                        end
-                        3: if (i2c_done) nibble_state <= 4;
-                        4: begin
-                            if (!i2c_busy) begin
-                                cmd_data <= 8'b10001000;  // Low nibble: 1000, E=1
-                                i2c_go <= 1;
-                                nibble_state <= 5;
-                            end
-                        end
-                        5: if (i2c_done) nibble_state <= 6;
-                        6: begin
-                            if (!i2c_busy) begin
-                                cmd_data <= 8'b10000000;  // E=0
-                                i2c_go <= 1;
-                                nibble_state <= 7;
-                            end
-                        end
-                        7: begin
-                            if (i2c_done) begin
-                                if (counter < 100_000)
-                                    counter <= counter + 1;
-                                else begin
-                                    counter <= 0;
-                                    nibble_state <= 0;
-                                    state <= DISPLAY_ON;
-                                end
-                            end
-                        end
-                    endcase
-                end
-                
-                DISPLAY_ON: begin // Send 0x0C (display on, no cursor)
-                    case (nibble_state)
-                        0: begin
-                            if (!i2c_busy) begin
-                                cmd_data <= 8'b00001000;  // 0000, E=1
-                                i2c_go <= 1;
-                                nibble_state <= 1;
-                            end
-                        end
-                        1: if (i2c_done) nibble_state <= 2;
-                        2: begin
-                            if (!i2c_busy) begin
-                                cmd_data <= 8'b00000000;  // E=0
-                                i2c_go <= 1;
-                                nibble_state <= 3;
-                            end
-                        end
-                        3: if (i2c_done) nibble_state <= 4;
-                        4: begin
-                            if (!i2c_busy) begin
-                                cmd_data <= 8'b11001000;  // 1100, E=1
-                                i2c_go <= 1;
-                                nibble_state <= 5;
-                            end
-                        end
-                        5: if (i2c_done) nibble_state <= 6;
-                        6: begin
-                            if (!i2c_busy) begin
-                                cmd_data <= 8'b11000000;  // E=0
-                                i2c_go <= 1;
-                                nibble_state <= 7;
-                            end
-                        end
-                        7: begin
-                            if (i2c_done) begin
-                                if (counter < 100_000)
-                                    counter <= counter + 1;
-                                else begin
-                                    counter <= 0;
-                                    nibble_state <= 0;
-                                    state <= CLEAR;
-                                end
-                            end
-                        end
-                    endcase
-                end
-                
-                CLEAR: begin // Send 0x01 (clear)
-                    case (nibble_state)
-                        0: begin
-                            if (!i2c_busy) begin
-                                cmd_data <= 8'b00001000;  // 0000, E=1
-                                i2c_go <= 1;
-                                nibble_state <= 1;
-                            end
-                        end
-                        1: if (i2c_done) nibble_state <= 2;
-                        2: begin
-                            if (!i2c_busy) begin
-                                cmd_data <= 8'b00000000;
-                                i2c_go <= 1;
-                                nibble_state <= 3;
-                            end
-                        end
-                        3: if (i2c_done) nibble_state <= 4;
-                        4: begin
-                            if (!i2c_busy) begin
-                                cmd_data <= 8'b00011000;  // 0001, E=1
-                                i2c_go <= 1;
-                                nibble_state <= 5;
-                            end
-                        end
-                        5: if (i2c_done) nibble_state <= 6;
-                        6: begin
-                            if (!i2c_busy) begin
-                                cmd_data <= 8'b00010000;
-                                i2c_go <= 1;
-                                nibble_state <= 7;
-                            end
-                        end
-                        7: begin
-                            if (i2c_done) begin
-                                if (counter < 2_000_000)  // 20ms for clear
-                                    counter <= counter + 1;
-                                else begin
-                                    counter <= 0;
-                                    nibble_state <= 0;
-                                    state <= WRITE_CHAR;
-                                end
-                            end
-                        end
-                    endcase
-                end
-                
-                WRITE_CHAR: begin // Write 'A' (0x41), RS=1
-                    case (nibble_state)
-                        0: begin
-                            if (!i2c_busy) begin
-                                cmd_data <= 8'b01001001;  // 0100 (high nibble of 'A'), E=1, RS=1
-                                i2c_go <= 1;
-                                nibble_state <= 1;
-                            end
-                        end
-                        1: if (i2c_done) nibble_state <= 2;
-                        2: begin
-                            if (!i2c_busy) begin
-                                cmd_data <= 8'b01000001;  // E=0, RS=1
-                                i2c_go <= 1;
-                                nibble_state <= 3;
-                            end
-                        end
-                        3: if (i2c_done) nibble_state <= 4;
-                        4: begin
-                            if (!i2c_busy) begin
-                                cmd_data <= 8'b00011001;  // 0001 (low nibble of 'A'), E=1, RS=1
-                                i2c_go <= 1;
-                                nibble_state <= 5;
-                            end
-                        end
-                        5: if (i2c_done) nibble_state <= 6;
-                        6: begin
-                            if (!i2c_busy) begin
-                                cmd_data <= 8'b00010001;  // E=0, RS=1
-                                i2c_go <= 1;
-                                nibble_state <= 7;
-                            end
-                        end
-                        7: begin
-                            if (i2c_done) begin
-                                state <= DONE;
-                            end
-                        end
-                    endcase
+                    end
                 end
                 
                 DONE: begin
-                    // Stay here
+                    state <= DONE;  // Stay done
                 end
-                
             endcase
         end
     end
 
 endmodule
 
-// Simple I2C Master
-module i2c_master(
+// I2C Master for OLED
+module i2c_master_oled(
     input wire clk,
     input wire rst,
     input wire start,
     input wire [6:0] addr,
     input wire [7:0] data,
+    input wire is_cmd,  // 0 = command, 1 = data
     output reg scl,
     output reg sda_out,
     input wire sda_in,
@@ -407,17 +321,17 @@ module i2c_master(
     output reg done
 );
 
-    localparam IDLE = 0, START_BIT = 1, ADDR_BITS = 2, 
-               DATA_BITS = 3, ACK_BIT = 4, STOP_BIT = 5;
+    localparam IDLE = 0, START_BIT = 1, ADDR_BITS = 2, ACK1 = 3,
+               CTRL_BYTE = 4, ACK2 = 5, DATA_BITS = 6, ACK3 = 7, STOP_BIT = 8;
     
     reg [3:0] state;
     reg [3:0] bit_cnt;
     reg [15:0] clk_cnt;
     reg [7:0] data_buf;
-    reg [6:0] addr_buf;
-    reg ack_after_addr;
+    reg [7:0] ctrl_byte;
     
-    localparam CLK_DIV = 500;  // 100kHz I2C
+    // I2C clock ~100kHz
+    localparam CLK_DIV = 500;
     
     always @(posedge clk or posedge rst) begin
         if (rst) begin
@@ -429,7 +343,6 @@ module i2c_master(
             done <= 0;
             bit_cnt <= 0;
             clk_cnt <= 0;
-            ack_after_addr <= 0;
         end else begin
             done <= 0;
             
@@ -437,37 +350,37 @@ module i2c_master(
                 IDLE: begin
                     scl <= 1;
                     sda_out <= 1;
-                    sda_en <= 1;
                     if (start) begin
                         data_buf <= data;
-                        addr_buf <= addr;
+                        ctrl_byte <= is_cmd ? 8'h40 : 8'h00;  // Co=0, D/C=1 for data, 0 for command
                         busy <= 1;
                         state <= START_BIT;
                         clk_cnt <= 0;
-                        ack_after_addr <= 0;
                     end
                 end
                 
                 START_BIT: begin
                     if (clk_cnt < CLK_DIV/2) begin
                         clk_cnt <= clk_cnt + 1;
-                        sda_out <= 0;
+                        sda_out <= 0;  // Start condition
+                        scl <= 1;
                     end else begin
                         clk_cnt <= 0;
                         bit_cnt <= 0;
+                        scl <= 0;
                         state <= ADDR_BITS;
                     end
                 end
                 
                 ADDR_BITS: begin
-                    if (clk_cnt < CLK_DIV/4) begin
+                    if (clk_cnt < CLK_DIV/2) begin
                         clk_cnt <= clk_cnt + 1;
                         scl <= 0;
                         if (bit_cnt < 7)
-                            sda_out <= addr_buf[6 - bit_cnt];
+                            sda_out <= addr[6 - bit_cnt];
                         else
-                            sda_out <= 0;
-                    end else if (clk_cnt < 3*CLK_DIV/4) begin
+                            sda_out <= 0;  // Write bit
+                    end else if (clk_cnt < CLK_DIV) begin
                         clk_cnt <= clk_cnt + 1;
                         scl <= 1;
                     end else begin
@@ -476,40 +389,32 @@ module i2c_master(
                             bit_cnt <= bit_cnt + 1;
                         end else begin
                             bit_cnt <= 0;
-                            ack_after_addr <= 1;
-                            state <= ACK_BIT;
+                            state <= ACK1;
                         end
                     end
                 end
                 
-                ACK_BIT: begin
-                    if (clk_cnt < CLK_DIV/4) begin
+                ACK1: begin
+                    if (clk_cnt < CLK_DIV/2) begin
                         clk_cnt <= clk_cnt + 1;
                         scl <= 0;
-                        sda_en <= 0;
-                    end else if (clk_cnt < 3*CLK_DIV/4) begin
+                        sda_en <= 0;  // Release for ACK
+                    end else if (clk_cnt < CLK_DIV) begin
                         clk_cnt <= clk_cnt + 1;
                         scl <= 1;
                     end else begin
                         clk_cnt <= 0;
                         sda_en <= 1;
-                        sda_out <= 1;
-                        if (ack_after_addr) begin
-                            ack_after_addr <= 0;
-                            bit_cnt <= 0;
-                            state <= DATA_BITS;
-                        end else begin
-                            state <= STOP_BIT;
-                        end
+                        state <= CTRL_BYTE;
                     end
                 end
                 
-                DATA_BITS: begin
-                    if (clk_cnt < CLK_DIV/4) begin
+                CTRL_BYTE: begin
+                    if (clk_cnt < CLK_DIV/2) begin
                         clk_cnt <= clk_cnt + 1;
                         scl <= 0;
-                        sda_out <= data_buf[7 - bit_cnt];
-                    end else if (clk_cnt < 3*CLK_DIV/4) begin
+                        sda_out <= ctrl_byte[7 - bit_cnt];
+                    end else if (clk_cnt < CLK_DIV) begin
                         clk_cnt <= clk_cnt + 1;
                         scl <= 1;
                     end else begin
@@ -518,9 +423,57 @@ module i2c_master(
                             bit_cnt <= bit_cnt + 1;
                         end else begin
                             bit_cnt <= 0;
-                            ack_after_addr <= 0;
-                            state <= ACK_BIT;
+                            state <= ACK2;
                         end
+                    end
+                end
+                
+                ACK2: begin
+                    if (clk_cnt < CLK_DIV/2) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        sda_en <= 0;
+                    end else if (clk_cnt < CLK_DIV) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 1;
+                    end else begin
+                        clk_cnt <= 0;
+                        sda_en <= 1;
+                        state <= DATA_BITS;
+                    end
+                end
+                
+                DATA_BITS: begin
+                    if (clk_cnt < CLK_DIV/2) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        sda_out <= data_buf[7 - bit_cnt];
+                    end else if (clk_cnt < CLK_DIV) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 1;
+                    end else begin
+                        clk_cnt <= 0;
+                        if (bit_cnt < 7) begin
+                            bit_cnt <= bit_cnt + 1;
+                        end else begin
+                            bit_cnt <= 0;
+                            state <= ACK3;
+                        end
+                    end
+                end
+                
+                ACK3: begin
+                    if (clk_cnt < CLK_DIV/2) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        sda_en <= 0;
+                    end else if (clk_cnt < CLK_DIV) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 1;
+                    end else begin
+                        clk_cnt <= 0;
+                        sda_en <= 1;
+                        state <= STOP_BIT;
                     end
                 end
                 
@@ -532,9 +485,12 @@ module i2c_master(
                     end else if (clk_cnt < CLK_DIV/2) begin
                         clk_cnt <= clk_cnt + 1;
                         scl <= 1;
+                        sda_out <= 0;
+                    end else if (clk_cnt < 3*CLK_DIV/4) begin
+                        clk_cnt <= clk_cnt + 1;
+                        sda_out <= 1;  // Stop condition
                     end else begin
                         clk_cnt <= 0;
-                        sda_out <= 1;
                         done <= 1;
                         busy <= 0;
                         state <= IDLE;
