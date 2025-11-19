@@ -17,8 +17,9 @@ module oled_test_top(
     assign sda = sda_en ? sda_out : 1'bz;
     assign scl = scl_out;
     
-    // Debug LEDs show state
-    assign led = {8'h00, state_debug};
+    // Debug LEDs show more info
+    wire i2c_busy_w, i2c_done_w;
+    assign led = {4'b0, i2c_busy_w, i2c_done_w, sda, scl, state_debug};
     
     ssd1306_oled #(
         .I2C_ADDR(I2C_ADDR)
@@ -43,7 +44,9 @@ module ssd1306_oled #(
     output wire sda_out,
     input wire sda_in,
     output wire sda_en,
-    output wire [7:0] state_debug
+    output wire [7:0] state_debug,
+    output wire i2c_busy_w,
+    output wire i2c_done_w
 );
 
     // States
@@ -64,6 +67,8 @@ module ssd1306_oled #(
     wire i2c_done;
     
     assign state_debug = state;
+    assign i2c_busy_w = i2c_busy;
+    assign i2c_done_w = i2c_done;
     
     // SSD1306 initialization commands for 128x64 OLED
     reg [7:0] init_cmds [0:25];
@@ -334,8 +339,8 @@ module i2c_master_oled(
     reg [7:0] data_buf;
     reg [7:0] ctrl_byte;
     
-    // I2C clock ~100kHz (100MHz / 1000 = 100kHz)
-    localparam CLK_DIV = 1000;
+    // I2C clock ~50kHz (slower for better reliability)
+    localparam CLK_DIV = 2000;
     
     always @(posedge clk or posedge rst) begin
         if (rst) begin
