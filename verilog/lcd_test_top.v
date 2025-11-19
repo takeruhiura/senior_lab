@@ -7,7 +7,7 @@ module oled_test_top(
 );
 
     // SSD1306 OLED I2C address (try 0x3C, if doesn't work try 0x3D)
-    parameter I2C_ADDR = 7'h3C;  // Common: 0x3C or 0x3D
+    parameter I2C_ADDR = 7'h3C;
     
     wire sda_out, sda_en;
     wire [7:0] state_debug;
@@ -54,6 +54,7 @@ module ssd1306_oled #(
     reg [31:0] delay_cnt;
     reg [7:0] init_step;
     reg [15:0] pixel_index;
+    reg [15:0] char_index;
     
     // I2C control signals
     reg i2c_start;
@@ -96,7 +97,6 @@ module ssd1306_oled #(
     end
     
     // Simple 5x8 font for "Hello World!"
-    // Each character is 5 bytes wide
     reg [7:0] char_H [0:4]; reg [7:0] char_e [0:4]; reg [7:0] char_l [0:4];
     reg [7:0] char_o [0:4]; reg [7:0] char_W [0:4]; reg [7:0] char_r [0:4];
     reg [7:0] char_d [0:4]; reg [7:0] char_spc [0:4]; reg [7:0] char_exc [0:4];
@@ -192,13 +192,14 @@ module ssd1306_oled #(
             delay_cnt <= 0;
             init_step <= 0;
             pixel_index <= 0;
+            char_index <= 0;
             i2c_start <= 0;
             is_command <= 0;
             char_byte <= 0;
         end else begin
             case (state)
                 IDLE: begin
-                    if (delay_cnt < 1000000) begin  // Wait 10ms
+                    if (delay_cnt < 10000000) begin  // Wait 100ms for power stabilization
                         delay_cnt <= delay_cnt + 1;
                     end else begin
                         delay_cnt <= 0;
@@ -215,61 +216,65 @@ module ssd1306_oled #(
                     end else if (init_step >= 26) begin
                         init_step <= 0;
                         pixel_index <= 0;
+                        char_index <= 0;
+                        char_byte <= 0;
                         state <= CLEAR_SCREEN;
                     end
                 end
                 
                 CLEAR_SCREEN: begin
                     if (!i2c_busy && pixel_index < 1024) begin  // 128x64/8 = 1024 bytes
-                        i2c_data <= 8'hFF;  // Turn ON all pixels (was 8'h00)
+                        i2c_data <= 8'h00;  // Clear pixel (was 8'hFF)
                         is_command <= 1;  // Data mode
                         i2c_start <= 1;
                         pixel_index <= pixel_index + 1;
                         state <= WAIT;
                     end else if (pixel_index >= 1024) begin
-                        // Skip text, just fill screen
-                        state <= DONE;
+                        pixel_index <= 0;
+                        char_index <= 0;
+                        char_byte <= 0;
+                        state <= WRITE_TEXT;  // Go to text writing (was DONE)
                     end
                 end
                 
                 WRITE_TEXT: begin
                     if (!i2c_busy) begin
-                        if (pixel_index == 0 && char_byte == 0) begin
+                        if (char_index == 0 && char_byte == 0) begin
                             // Set page (row) to 3
-                            i2c_data <= 8'hB3;  // Page 3
+                            i2c_data <= 8'hB3;  // Page 3 (middle of screen)
                             is_command <= 0;
                             i2c_start <= 1;
                             char_byte <= 1;
                             state <= WAIT;
-                        end else if (pixel_index == 0 && char_byte == 1) begin
-                            // Set column to 20
-                            i2c_data <= 8'h00 | (20 & 8'h0F);  // Lower nibble
+                        end else if (char_index == 0 && char_byte == 1) begin
+                            // Set column to 20 - lower nibble
+                            i2c_data <= 8'h00 | (20 & 8'h0F);
                             is_command <= 0;
                             i2c_start <= 1;
                             char_byte <= 2;
                             state <= WAIT;
-                        end else if (pixel_index == 0 && char_byte == 2) begin
-                            i2c_data <= 8'h10 | ((20 >> 4) & 8'h0F);  // Upper nibble
+                        end else if (char_index == 0 && char_byte == 2) begin
+                            // Set column to 20 - upper nibble
+                            i2c_data <= 8'h10 | ((20 >> 4) & 8'h0F);
                             is_command <= 0;
                             i2c_start <= 1;
-                            char_byte <= 0;
-                            pixel_index <= 1;
+                            char_byte <= 3;
                             state <= WAIT;
-                        end else if (pixel_index > 0 && pixel_index <= 12) begin
-                            // Write characters
-                            if (char_byte < 5) begin
-                                i2c_data <= get_char_byte(text_string[pixel_index-1], char_byte);
+                        end else if (char_index < 12) begin
+                            // Write character bytes
+                            if (char_byte >= 3 && char_byte < 8) begin
+                                i2c_data <= get_char_byte(text_string[char_index], char_byte - 3);
                                 is_command <= 1;  // Data mode
                                 i2c_start <= 1;
                                 char_byte <= char_byte + 1;
                                 state <= WAIT;
-                            end else begin
+                            end else if (char_byte == 8) begin
                                 // Add space between characters
                                 i2c_data <= 8'h00;
                                 is_command <= 1;
                                 i2c_start <= 1;
-                                char_byte <= 0;
-                                pixel_index <= pixel_index + 1;
+                                char_byte <= 3;
+                                char_index <= char_index + 1;
                                 state <= WAIT;
                             end
                         end else begin
@@ -281,15 +286,16 @@ module ssd1306_oled #(
                 WAIT: begin
                     i2c_start <= 0;
                     if (i2c_done) begin
-                        if (state == WAIT && init_step < 26 && pixel_index == 0) begin
+                        // Return to appropriate state based on current operation
+                        if (init_step < 26) begin
                             init_step <= init_step + 1;
                             state <= INIT;
-                        end else if (state == WAIT && pixel_index < 1024 && init_step >= 26) begin
+                        end else if (pixel_index > 0 && pixel_index < 1024) begin
                             state <= CLEAR_SCREEN;
-                        end else if (state == WAIT && pixel_index > 0) begin
+                        end else if (char_index < 12 || char_byte > 0) begin
                             state <= WRITE_TEXT;
                         end else begin
-                            state <= INIT;
+                            state <= DONE;
                         end
                     end
                 end
@@ -328,7 +334,7 @@ module i2c_master_oled(
     reg [7:0] data_buf;
     reg [7:0] ctrl_byte;
     
-    // I2C clock ~100kHz (was 500, trying slower for reliability)
+    // I2C clock ~100kHz (100MHz / 1000 = 100kHz)
     localparam CLK_DIV = 1000;
     
     always @(posedge clk or posedge rst) begin
@@ -348,6 +354,7 @@ module i2c_master_oled(
                 IDLE: begin
                     scl <= 1;
                     sda_out <= 1;
+                    sda_en <= 1;
                     if (start) begin
                         data_buf <= data;
                         ctrl_byte <= is_cmd ? 8'h40 : 8'h00;  // Co=0, D/C=1 for data, 0 for command
@@ -360,7 +367,7 @@ module i2c_master_oled(
                 START_BIT: begin
                     if (clk_cnt < CLK_DIV/2) begin
                         clk_cnt <= clk_cnt + 1;
-                        sda_out <= 0;  // Start condition
+                        sda_out <= 0;  // Start condition: SDA high-to-low while SCL high
                         scl <= 1;
                     end else begin
                         clk_cnt <= 0;
@@ -396,7 +403,7 @@ module i2c_master_oled(
                     if (clk_cnt < CLK_DIV/2) begin
                         clk_cnt <= clk_cnt + 1;
                         scl <= 0;
-                        sda_en <= 0;  // Release for ACK
+                        sda_en <= 0;  // Release SDA for ACK
                     end else if (clk_cnt < CLK_DIV) begin
                         clk_cnt <= clk_cnt + 1;
                         scl <= 1;
@@ -486,7 +493,7 @@ module i2c_master_oled(
                         sda_out <= 0;
                     end else if (clk_cnt < 3*CLK_DIV/4) begin
                         clk_cnt <= clk_cnt + 1;
-                        sda_out <= 1;  // Stop condition
+                        sda_out <= 1;  // Stop condition: SDA low-to-high while SCL high
                     end else begin
                         clk_cnt <= 0;
                         done <= 1;
