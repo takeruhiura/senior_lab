@@ -64,35 +64,35 @@ module ssd1306_oled #(
     
     assign state_debug = state;
     
-    // SSD1306 initialization commands
+    // SSD1306 initialization commands for 128x64 OLED
     reg [7:0] init_cmds [0:25];
     initial begin
         init_cmds[0]  = 8'hAE; // Display OFF
         init_cmds[1]  = 8'hD5; // Set display clock divide
-        init_cmds[2]  = 8'h80; // Suggested ratio
+        init_cmds[2]  = 8'h80; // Suggested ratio 0x80
         init_cmds[3]  = 8'hA8; // Set multiplex
-        init_cmds[4]  = 8'h3F; // 1/64 duty
+        init_cmds[4]  = 8'h3F; // 1/64 duty (0x3F for 128x64)
         init_cmds[5]  = 8'hD3; // Set display offset
         init_cmds[6]  = 8'h00; // No offset
-        init_cmds[7]  = 8'h40; // Set start line
-        init_cmds[8]  = 8'h8D; // Charge pump
-        init_cmds[9]  = 8'h14; // Enable charge pump
-        init_cmds[10] = 8'h20; // Memory mode
-        init_cmds[11] = 8'h00; // Horizontal addressing
-        init_cmds[12] = 8'hA1; // Set segment remap
-        init_cmds[13] = 8'hC8; // Set COM output scan direction
-        init_cmds[14] = 8'hDA; // Set COM pins
-        init_cmds[15] = 8'h12; // Alternative COM pin config
-        init_cmds[16] = 8'h81; // Set contrast
-        init_cmds[17] = 8'hCF; // Max contrast
-        init_cmds[18] = 8'hD9; // Set precharge
-        init_cmds[19] = 8'hF1; // 
-        init_cmds[20] = 8'hDB; // Set VCOMH deselect
-        init_cmds[21] = 8'h40; // 
-        init_cmds[22] = 8'hA4; // Display all on resume
-        init_cmds[23] = 8'hA6; // Normal display (not inverted)
+        init_cmds[7]  = 8'h40; // Set start line address (0x40)
+        init_cmds[8]  = 8'h8D; // Charge pump setting
+        init_cmds[9]  = 8'h14; // Enable charge pump (0x14)
+        init_cmds[10] = 8'h20; // Set Memory Addressing Mode
+        init_cmds[11] = 8'h00; // 0x00 = Horizontal Addressing Mode
+        init_cmds[12] = 8'hA1; // Set Segment Re-map (0xA1)
+        init_cmds[13] = 8'hC8; // Set COM Output Scan Direction (0xC8)
+        init_cmds[14] = 8'hDA; // Set COM Pins hardware configuration
+        init_cmds[15] = 8'h12; // 0x12 for 128x64
+        init_cmds[16] = 8'h81; // Set contrast control
+        init_cmds[17] = 8'hCF; // 0xCF (max brightness)
+        init_cmds[18] = 8'hD9; // Set pre-charge period
+        init_cmds[19] = 8'hF1; // 0xF1
+        init_cmds[20] = 8'hDB; // Set VCOMH deselect level
+        init_cmds[21] = 8'h40; // 0x40
+        init_cmds[22] = 8'hA4; // Set Entire Display ON/OFF (0xA4 = normal)
+        init_cmds[23] = 8'hA6; // Set Normal/Inverse Display (0xA6 = normal)
         init_cmds[24] = 8'h2E; // Deactivate scroll
-        init_cmds[25] = 8'hAF; // Display ON
+        init_cmds[25] = 8'hAF; // Display ON (0xAF)
     end
     
     // Simple 5x8 font for "Hello World!"
@@ -221,16 +221,14 @@ module ssd1306_oled #(
                 
                 CLEAR_SCREEN: begin
                     if (!i2c_busy && pixel_index < 1024) begin  // 128x64/8 = 1024 bytes
-                        i2c_data <= 8'h00;  // Clear pixel
+                        i2c_data <= 8'hFF;  // Turn ON all pixels (was 8'h00)
                         is_command <= 1;  // Data mode
                         i2c_start <= 1;
                         pixel_index <= pixel_index + 1;
                         state <= WAIT;
                     end else if (pixel_index >= 1024) begin
-                        // Set cursor to row 3 (byte 3), column 20
-                        pixel_index <= 0;
-                        char_byte <= 0;
-                        state <= WRITE_TEXT;
+                        // Skip text, just fill screen
+                        state <= DONE;
                     end
                 end
                 
@@ -330,8 +328,8 @@ module i2c_master_oled(
     reg [7:0] data_buf;
     reg [7:0] ctrl_byte;
     
-    // I2C clock ~100kHz
-    localparam CLK_DIV = 500;
+    // I2C clock ~100kHz (was 500, trying slower for reliability)
+    localparam CLK_DIV = 1000;
     
     always @(posedge clk or posedge rst) begin
         if (rst) begin
