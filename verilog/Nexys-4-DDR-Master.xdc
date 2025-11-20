@@ -1,266 +1,590 @@
-## This file is a general .xdc for the Nexys4 DDR Rev. C
-## To use it in a project:
-## - uncomment the lines corresponding to used pins
-## - rename the used ports (in each line, after get_ports) according to the top level signal names in the project
-
-## Clock signal
-set_property -dict { PACKAGE_PIN E3    IOSTANDARD LVCMOS33 } [get_ports { clk }]; #IO_L12P_T1_MRCC_35 Sch=clk100mhz
-create_clock -add -name sys_clk_pin -period 10.00 -waveform {0 5} [get_ports {clk}];
-
-
-##Switches
-
-#set_property -dict { PACKAGE_PIN J15   IOSTANDARD LVCMOS33 } [get_ports { SW[0] }]; #IO_L24N_T3_RS0_15 Sch=sw[0]
-#set_property -dict { PACKAGE_PIN L16   IOSTANDARD LVCMOS33 } [get_ports { SW[1] }]; #IO_L3N_T0_DQS_EMCCLK_14 Sch=sw[1]
-#set_property -dict { PACKAGE_PIN M13   IOSTANDARD LVCMOS33 } [get_ports { SW[2] }]; #IO_L6N_T0_D08_VREF_14 Sch=sw[2]
-#set_property -dict { PACKAGE_PIN R15   IOSTANDARD LVCMOS33 } [get_ports { SW[3] }]; #IO_L13N_T2_MRCC_14 Sch=sw[3]
-#set_property -dict { PACKAGE_PIN R17   IOSTANDARD LVCMOS33 } [get_ports { SW[4] }]; #IO_L12N_T1_MRCC_14 Sch=sw[4]
-#set_property -dict { PACKAGE_PIN T18   IOSTANDARD LVCMOS33 } [get_ports { SW[5] }]; #IO_L7N_T1_D10_14 Sch=sw[5]
-#set_property -dict { PACKAGE_PIN U18   IOSTANDARD LVCMOS33 } [get_ports { SW[6] }]; #IO_L17N_T2_A13_D29_14 Sch=sw[6]
-#set_property -dict { PACKAGE_PIN R13   IOSTANDARD LVCMOS33 } [get_ports { SW[7] }]; #IO_L5N_T0_D07_14 Sch=sw[7]
-#set_property -dict { PACKAGE_PIN T8    IOSTANDARD LVCMOS18 } [get_ports { SW[8] }]; #IO_L24N_T3_34 Sch=sw[8]
-#set_property -dict { PACKAGE_PIN U8    IOSTANDARD LVCMOS18 } [get_ports { SW[9] }]; #IO_25_34 Sch=sw[9]
-#set_property -dict { PACKAGE_PIN R16   IOSTANDARD LVCMOS33 } [get_ports { SW[10] }]; #IO_L15P_T2_DQS_RDWR_B_14 Sch=sw[10]
-#set_property -dict { PACKAGE_PIN T13   IOSTANDARD LVCMOS33 } [get_ports { SW[11] }]; #IO_L23P_T3_A03_D19_14 Sch=sw[11]
-#set_property -dict { PACKAGE_PIN H6    IOSTANDARD LVCMOS33 } [get_ports { SW[12] }]; #IO_L24P_T3_35 Sch=sw[12]
-#set_property -dict { PACKAGE_PIN U12   IOSTANDARD LVCMOS33 } [get_ports { SW[13] }]; #IO_L20P_T3_A08_D24_14 Sch=sw[13]
-#set_property -dict { PACKAGE_PIN U11   IOSTANDARD LVCMOS33 } [get_ports { SW[14] }]; #IO_L19N_T3_A09_D25_VREF_14 Sch=sw[14]
-#set_property -dict { PACKAGE_PIN V10   IOSTANDARD LVCMOS33 } [get_ports { SW[15] }]; #IO_L21P_T3_DQS_14 Sch=sw[15]
-
-
-## LEDs
-
-set_property -dict { PACKAGE_PIN H17   IOSTANDARD LVCMOS33 } [get_ports { led[0] }]; #IO_L18P_T2_A24_15 Sch=led[0]
-set_property -dict { PACKAGE_PIN K15   IOSTANDARD LVCMOS33 } [get_ports { led[1] }]; #IO_L24P_T3_RS1_15 Sch=led[1]
-set_property -dict { PACKAGE_PIN J13   IOSTANDARD LVCMOS33 } [get_ports { led[2] }]; #IO_L17N_T2_A25_15 Sch=led[2]
-set_property -dict { PACKAGE_PIN N14   IOSTANDARD LVCMOS33 } [get_ports { led[3] }]; #IO_L8P_T1_D11_14 Sch=led[3]
-set_property -dict { PACKAGE_PIN R18   IOSTANDARD LVCMOS33 } [get_ports { led[4] }]; #IO_L7P_T1_D09_14 Sch=led[4]
-set_property -dict { PACKAGE_PIN V17   IOSTANDARD LVCMOS33 } [get_ports { led[5] }]; #IO_L18N_T2_A11_D27_14 Sch=led[5]
-set_property -dict { PACKAGE_PIN U17   IOSTANDARD LVCMOS33 } [get_ports { led[6] }]; #IO_L17P_T2_A14_D30_14 Sch=led[6]
-set_property -dict { PACKAGE_PIN U16   IOSTANDARD LVCMOS33 } [get_ports { led[7] }]; #IO_L18P_T2_A12_D28_14 Sch=led[7]
-set_property -dict { PACKAGE_PIN V16   IOSTANDARD LVCMOS33 } [get_ports { led[8] }]; #IO_L16N_T2_A15_D31_14 Sch=led[8]
-set_property -dict { PACKAGE_PIN T15   IOSTANDARD LVCMOS33 } [get_ports { led[9] }]; #IO_L14N_T2_SRCC_14 Sch=led[9]
-set_property -dict { PACKAGE_PIN U14   IOSTANDARD LVCMOS33 } [get_ports { led[10] }]; #IO_L22P_T3_A05_D21_14 Sch=led[10]
-set_property -dict { PACKAGE_PIN T16   IOSTANDARD LVCMOS33 } [get_ports { led[11] }]; #IO_L15N_T2_DQS_DOUT_CSO_B_14 Sch=led[11]
-set_property -dict { PACKAGE_PIN V15   IOSTANDARD LVCMOS33 } [get_ports { led[12] }]; #IO_L16P_T2_CSI_B_14 Sch=led[12]
-set_property -dict { PACKAGE_PIN V14   IOSTANDARD LVCMOS33 } [get_ports { led[13] }]; #IO_L22N_T3_A04_D20_14 Sch=led[13]
-set_property -dict { PACKAGE_PIN V12   IOSTANDARD LVCMOS33 } [get_ports { led[14] }]; #IO_L20N_T3_A07_D23_14 Sch=led[14]
-set_property -dict { PACKAGE_PIN V11   IOSTANDARD LVCMOS33 } [get_ports { led[15] }]; #IO_L21N_T3_DQS_A06_D22_14 Sch=led[15]
-
-#set_property -dict { PACKAGE_PIN R12   IOSTANDARD LVCMOS33 } [get_ports { LED16_B }]; #IO_L5P_T0_D06_14 Sch=led16_b
-#set_property -dict { PACKAGE_PIN M16   IOSTANDARD LVCMOS33 } [get_ports { LED16_G }]; #IO_L10P_T1_D14_14 Sch=led16_g
-#set_property -dict { PACKAGE_PIN N15   IOSTANDARD LVCMOS33 } [get_ports { LED16_R }]; #IO_L11P_T1_SRCC_14 Sch=led16_r
-#set_property -dict { PACKAGE_PIN G14   IOSTANDARD LVCMOS33 } [get_ports { LED17_B }]; #IO_L15N_T2_DQS_ADV_B_15 Sch=led17_b
-#set_property -dict { PACKAGE_PIN R11   IOSTANDARD LVCMOS33 } [get_ports { LED17_G }]; #IO_0_14 Sch=led17_g
-#set_property -dict { PACKAGE_PIN N16   IOSTANDARD LVCMOS33 } [get_ports { LED17_R }]; #IO_L11N_T1_SRCC_14 Sch=led17_r
-
-
-##7 segment display
-
-#set_property -dict { PACKAGE_PIN T10   IOSTANDARD LVCMOS33 } [get_ports { CA }]; #IO_L24N_T3_A00_D16_14 Sch=ca
-#set_property -dict { PACKAGE_PIN R10   IOSTANDARD LVCMOS33 } [get_ports { CB }]; #IO_25_14 Sch=cb
-#set_property -dict { PACKAGE_PIN K16   IOSTANDARD LVCMOS33 } [get_ports { CC }]; #IO_25_15 Sch=cc
-#set_property -dict { PACKAGE_PIN K13   IOSTANDARD LVCMOS33 } [get_ports { CD }]; #IO_L17P_T2_A26_15 Sch=cd
-#set_property -dict { PACKAGE_PIN P15   IOSTANDARD LVCMOS33 } [get_ports { CE }]; #IO_L13P_T2_MRCC_14 Sch=ce
-#set_property -dict { PACKAGE_PIN T11   IOSTANDARD LVCMOS33 } [get_ports { CF }]; #IO_L19P_T3_A10_D26_14 Sch=cf
-#set_property -dict { PACKAGE_PIN L18   IOSTANDARD LVCMOS33 } [get_ports { CG }]; #IO_L4P_T0_D04_14 Sch=cg
-
-#set_property -dict { PACKAGE_PIN H15   IOSTANDARD LVCMOS33 } [get_ports { DP }]; #IO_L19N_T3_A21_VREF_15 Sch=dp
-
-#set_property -dict { PACKAGE_PIN J17   IOSTANDARD LVCMOS33 } [get_ports { AN[0] }]; #IO_L23P_T3_FOE_B_15 Sch=an[0]
-#set_property -dict { PACKAGE_PIN J18   IOSTANDARD LVCMOS33 } [get_ports { AN[1] }]; #IO_L23N_T3_FWE_B_15 Sch=an[1]
-#set_property -dict { PACKAGE_PIN T9    IOSTANDARD LVCMOS33 } [get_ports { AN[2] }]; #IO_L24P_T3_A01_D17_14 Sch=an[2]
-#set_property -dict { PACKAGE_PIN J14   IOSTANDARD LVCMOS33 } [get_ports { AN[3] }]; #IO_L19P_T3_A22_15 Sch=an[3]
-#set_property -dict { PACKAGE_PIN P14   IOSTANDARD LVCMOS33 } [get_ports { AN[4] }]; #IO_L8N_T1_D12_14 Sch=an[4]
-#set_property -dict { PACKAGE_PIN T14   IOSTANDARD LVCMOS33 } [get_ports { AN[5] }]; #IO_L14P_T2_SRCC_14 Sch=an[5]
-#set_property -dict { PACKAGE_PIN K2    IOSTANDARD LVCMOS33 } [get_ports { AN[6] }]; #IO_L23P_T3_35 Sch=an[6]
-#set_property -dict { PACKAGE_PIN U13   IOSTANDARD LVCMOS33 } [get_ports { AN[7] }]; #IO_L23N_T3_A02_D18_14 Sch=an[7]
-
-
-##Buttons
-
-#set_property -dict { PACKAGE_PIN C12   IOSTANDARD LVCMOS33 } [get_ports { CPU_RESETN }]; #IO_L3P_T0_DQS_AD1P_15 Sch=cpu_resetn
-
-set_property -dict { PACKAGE_PIN N17   IOSTANDARD LVCMOS33 } [get_ports { rst }]; #IO_L9P_T1_DQS_14 Sch=btnc
-#set_property -dict { PACKAGE_PIN M18   IOSTANDARD LVCMOS33 } [get_ports { BTNU }]; #IO_L4N_T0_D05_14 Sch=btnu
-#set_property -dict { PACKAGE_PIN P17   IOSTANDARD LVCMOS33 } [get_ports { BTNL }]; #IO_L12P_T1_MRCC_14 Sch=btnl
-#set_property -dict { PACKAGE_PIN M17   IOSTANDARD LVCMOS33 } [get_ports { BTNR }]; #IO_L10N_T1_D15_14 Sch=btnr
-#set_property -dict { PACKAGE_PIN P18   IOSTANDARD LVCMOS33 } [get_ports { BTND }]; #IO_L9N_T1_DQS_D13_14 Sch=btnd
-
-
-##Pmod Headers
-
-
-##Pmod Header JA
-
-#set_property -dict { PACKAGE_PIN C17   IOSTANDARD LVCMOS33 } [get_ports { JA[1] }]; #IO_L20N_T3_A19_15 Sch=ja[1]
-#set_property -dict { PACKAGE_PIN D18   IOSTANDARD LVCMOS33 } [get_ports { JA[2] }]; #IO_L21N_T3_DQS_A18_15 Sch=ja[2]
-## OLED I2C interface with internal pull-ups (external 4.7kΩ also present)
-set_property -dict { PACKAGE_PIN E18   IOSTANDARD LVCMOS33 PULLUP TRUE } [get_ports { sda }]; #IO_L21P_T3_DQS_15 Sch=ja[3] - SDA for OLED
-set_property -dict { PACKAGE_PIN G17   IOSTANDARD LVCMOS33 PULLUP TRUE } [get_ports { scl }]; #IO_L18N_T2_A23_15 Sch=ja[4] - SCL for OLED
-#set_property -dict { PACKAGE_PIN D17   IOSTANDARD LVCMOS33 } [get_ports { JA[7] }]; #IO_L16N_T2_A27_15 Sch=ja[7]
-#set_property -dict { PACKAGE_PIN E17   IOSTANDARD LVCMOS33 } [get_ports { JA[8] }]; #IO_L16P_T2_A28_15 Sch=ja[8]
-#set_property -dict { PACKAGE_PIN F18   IOSTANDARD LVCMOS33 } [get_ports { JA[9] }]; #IO_L22N_T3_A16_15 Sch=ja[9]
-#set_property -dict { PACKAGE_PIN G18   IOSTANDARD LVCMOS33 } [get_ports { JA[10] }]; #IO_L22P_T3_A17_15 Sch=ja[10]
-
-
-##Pmod Header JB
-
-#set_property -dict { PACKAGE_PIN D14   IOSTANDARD LVCMOS33 } [get_ports { JB[1] }]; #IO_L1P_T0_AD0P_15 Sch=jb[1]
-#set_property -dict { PACKAGE_PIN F16   IOSTANDARD LVCMOS33 } [get_ports { JB[2] }]; #IO_L14N_T2_SRCC_15 Sch=jb[2]
-#set_property -dict { PACKAGE_PIN G16   IOSTANDARD LVCMOS33 } [get_ports { JB[3] }]; #IO_L13N_T2_MRCC_15 Sch=jb[3]
-#set_property -dict { PACKAGE_PIN H14   IOSTANDARD LVCMOS33 } [get_ports { JB[4] }]; #IO_L15P_T2_DQS_15 Sch=jb[4]
-#set_property -dict { PACKAGE_PIN E16   IOSTANDARD LVCMOS33 } [get_ports { JB[7] }]; #IO_L11N_T1_SRCC_15 Sch=jb[7]
-#set_property -dict { PACKAGE_PIN F13   IOSTANDARD LVCMOS33 } [get_ports { JB[8] }]; #IO_L5P_T0_AD9P_15 Sch=jb[8]
-#set_property -dict { PACKAGE_PIN G13   IOSTANDARD LVCMOS33 } [get_ports { JB[9] }]; #IO_0_15 Sch=jb[9]
-#set_property -dict { PACKAGE_PIN H16   IOSTANDARD LVCMOS33 } [get_ports { JB[10] }]; #IO_L13P_T2_MRCC_15 Sch=jb[10]
-
-
-##Pmod Header JC
-
-#set_property -dict { PACKAGE_PIN K1    IOSTANDARD LVCMOS33 } [get_ports { JC[1] }]; #IO_L23N_T3_35 Sch=jc[1]
-#set_property -dict { PACKAGE_PIN F6    IOSTANDARD LVCMOS33 } [get_ports { JC[2] }]; #IO_L19N_T3_VREF_35 Sch=jc[2]
-#set_property -dict { PACKAGE_PIN J2    IOSTANDARD LVCMOS33 } [get_ports { JC[3] }]; #IO_L22N_T3_35 Sch=jc[3]
-#set_property -dict { PACKAGE_PIN G6    IOSTANDARD LVCMOS33 } [get_ports { JC[4] }]; #IO_L19P_T3_35 Sch=jc[4]
-#set_property -dict { PACKAGE_PIN E7    IOSTANDARD LVCMOS33 } [get_ports { JC[7] }]; #IO_L6P_T0_35 Sch=jc[7]
-#set_property -dict { PACKAGE_PIN J3    IOSTANDARD LVCMOS33 } [get_ports { JC[8] }]; #IO_L22P_T3_35 Sch=jc[8]
-#set_property -dict { PACKAGE_PIN J4    IOSTANDARD LVCMOS33 } [get_ports { JC[9] }]; #IO_L21P_T3_DQS_35 Sch=jc[9]
-#set_property -dict { PACKAGE_PIN E6    IOSTANDARD LVCMOS33 } [get_ports { JC[10] }]; #IO_L5P_T0_AD13P_35 Sch=jc[10]
-
-
-##Pmod Header JD
-
-#set_property -dict { PACKAGE_PIN H4    IOSTANDARD LVCMOS33 } [get_ports { JD[1] }]; #IO_L21N_T3_DQS_35 Sch=jd[1]
-#set_property -dict { PACKAGE_PIN H1    IOSTANDARD LVCMOS33 } [get_ports { JD[2] }]; #IO_L17P_T2_35 Sch=jd[2]
-#set_property -dict { PACKAGE_PIN G1    IOSTANDARD LVCMOS33 } [get_ports { JD[3] }]; #IO_L17N_T2_35 Sch=jd[3]
-#set_property -dict { PACKAGE_PIN G3    IOSTANDARD LVCMOS33 } [get_ports { JD[4] }]; #IO_L20N_T3_35 Sch=jd[4]
-#set_property -dict { PACKAGE_PIN H2    IOSTANDARD LVCMOS33 } [get_ports { JD[7] }]; #IO_L15P_T2_DQS_35 Sch=jd[7]
-#set_property -dict { PACKAGE_PIN G4    IOSTANDARD LVCMOS33 } [get_ports { JD[8] }]; #IO_L20P_T3_35 Sch=jd[8]
-#set_property -dict { PACKAGE_PIN G2    IOSTANDARD LVCMOS33 } [get_ports { JD[9] }]; #IO_L15N_T2_DQS_35 Sch=jd[9]
-#set_property -dict { PACKAGE_PIN F3    IOSTANDARD LVCMOS33 } [get_ports { JD[10] }]; #IO_L13N_T2_MRCC_35 Sch=jd[10]
-
-
-##Pmod Header JXADC
-
-#set_property -dict { PACKAGE_PIN A14   IOSTANDARD LVDS     } [get_ports { XA_N[1] }]; #IO_L9N_T1_DQS_AD3N_15 Sch=xa_n[1]
-#set_property -dict { PACKAGE_PIN A13   IOSTANDARD LVDS     } [get_ports { XA_P[1] }]; #IO_L9P_T1_DQS_AD3P_15 Sch=xa_p[1]
-#set_property -dict { PACKAGE_PIN A16   IOSTANDARD LVDS     } [get_ports { XA_N[2] }]; #IO_L8N_T1_AD10N_15 Sch=xa_n[2]
-#set_property -dict { PACKAGE_PIN A15   IOSTANDARD LVDS     } [get_ports { XA_P[2] }]; #IO_L8P_T1_AD10P_15 Sch=xa_p[2]
-#set_property -dict { PACKAGE_PIN B17   IOSTANDARD LVDS     } [get_ports { XA_N[3] }]; #IO_L7N_T1_AD2N_15 Sch=xa_n[3]
-#set_property -dict { PACKAGE_PIN B16   IOSTANDARD LVDS     } [get_ports { XA_P[3] }]; #IO_L7P_T1_AD2P_15 Sch=xa_p[3]
-#set_property -dict { PACKAGE_PIN A18   IOSTANDARD LVDS     } [get_ports { XA_N[4] }]; #IO_L10N_T1_AD11N_15 Sch=xa_n[4]
-#set_property -dict { PACKAGE_PIN B18   IOSTANDARD LVDS     } [get_ports { XA_P[4] }]; #IO_L10P_T1_AD11P_15 Sch=xa_p[4]
-
-
-##VGA Connector
-
-#set_property -dict { PACKAGE_PIN A3    IOSTANDARD LVCMOS33 } [get_ports { VGA_R[0] }]; #IO_L8N_T1_AD14N_35 Sch=vga_r[0]
-#set_property -dict { PACKAGE_PIN B4    IOSTANDARD LVCMOS33 } [get_ports { VGA_R[1] }]; #IO_L7N_T1_AD6N_35 Sch=vga_r[1]
-#set_property -dict { PACKAGE_PIN C5    IOSTANDARD LVCMOS33 } [get_ports { VGA_R[2] }]; #IO_L1N_T0_AD4N_35 Sch=vga_r[2]
-#set_property -dict { PACKAGE_PIN A4    IOSTANDARD LVCMOS33 } [get_ports { VGA_R[3] }]; #IO_L8P_T1_AD14P_35 Sch=vga_r[3]
-
-#set_property -dict { PACKAGE_PIN C6    IOSTANDARD LVCMOS33 } [get_ports { VGA_G[0] }]; #IO_L1P_T0_AD4P_35 Sch=vga_g[0]
-#set_property -dict { PACKAGE_PIN A5    IOSTANDARD LVCMOS33 } [get_ports { VGA_G[1] }]; #IO_L3N_T0_DQS_AD5N_35 Sch=vga_g[1]
-#set_property -dict { PACKAGE_PIN B6    IOSTANDARD LVCMOS33 } [get_ports { VGA_G[2] }]; #IO_L2N_T0_AD12N_35 Sch=vga_g[2]
-#set_property -dict { PACKAGE_PIN A6    IOSTANDARD LVCMOS33 } [get_ports { VGA_G[3] }]; #IO_L3P_T0_DQS_AD5P_35 Sch=vga_g[3]
-
-#set_property -dict { PACKAGE_PIN B7    IOSTANDARD LVCMOS33 } [get_ports { VGA_B[0] }]; #IO_L2P_T0_AD12P_35 Sch=vga_b[0]
-#set_property -dict { PACKAGE_PIN C7    IOSTANDARD LVCMOS33 } [get_ports { VGA_B[1] }]; #IO_L4N_T0_35 Sch=vga_b[1]
-#set_property -dict { PACKAGE_PIN D7    IOSTANDARD LVCMOS33 } [get_ports { VGA_B[2] }]; #IO_L6N_T0_VREF_35 Sch=vga_b[2]
-#set_property -dict { PACKAGE_PIN D8    IOSTANDARD LVCMOS33 } [get_ports { VGA_B[3] }]; #IO_L4P_T0_35 Sch=vga_b[3]
-
-#set_property -dict { PACKAGE_PIN B11   IOSTANDARD LVCMOS33 } [get_ports { VGA_HS }]; #IO_L4P_T0_15 Sch=vga_hs
-#set_property -dict { PACKAGE_PIN B12   IOSTANDARD LVCMOS33 } [get_ports { VGA_VS }]; #IO_L3N_T0_DQS_AD1N_15 Sch=vga_vs
-
-
-##Micro SD Connector
-
-#set_property -dict { PACKAGE_PIN E2    IOSTANDARD LVCMOS33 } [get_ports { SD_RESET }]; #IO_L14P_T2_SRCC_35 Sch=sd_reset
-#set_property -dict { PACKAGE_PIN A1    IOSTANDARD LVCMOS33 } [get_ports { SD_CD }]; #IO_L9N_T1_DQS_AD7N_35 Sch=sd_cd
-#set_property -dict { PACKAGE_PIN B1    IOSTANDARD LVCMOS33 } [get_ports { SD_SCK }]; #IO_L9P_T1_DQS_AD7P_35 Sch=sd_sck
-#set_property -dict { PACKAGE_PIN C1    IOSTANDARD LVCMOS33 } [get_ports { SD_CMD }]; #IO_L16N_T2_35 Sch=sd_cmd
-#set_property -dict { PACKAGE_PIN C2    IOSTANDARD LVCMOS33 } [get_ports { SD_DAT[0] }]; #IO_L16P_T2_35 Sch=sd_dat[0]
-#set_property -dict { PACKAGE_PIN E1    IOSTANDARD LVCMOS33 } [get_ports { SD_DAT[1] }]; #IO_L18N_T2_35 Sch=sd_dat[1]
-#set_property -dict { PACKAGE_PIN F1    IOSTANDARD LVCMOS33 } [get_ports { SD_DAT[2] }]; #IO_L18P_T2_35 Sch=sd_dat[2]
-#set_property -dict { PACKAGE_PIN D2    IOSTANDARD LVCMOS33 } [get_ports { SD_DAT[3] }]; #IO_L14N_T2_SRCC_35 Sch=sd_dat[3]
-
-
-##Accelerometer
-
-#set_property -dict { PACKAGE_PIN E15   IOSTANDARD LVCMOS33 } [get_ports { ACL_MISO }]; #IO_L11P_T1_SRCC_15 Sch=acl_miso
-#set_property -dict { PACKAGE_PIN F14   IOSTANDARD LVCMOS33 } [get_ports { ACL_MOSI }]; #IO_L5N_T0_AD9N_15 Sch=acl_mosi
-#set_property -dict { PACKAGE_PIN F15   IOSTANDARD LVCMOS33 } [get_ports { ACL_SCLK }]; #IO_L14P_T2_SRCC_15 Sch=acl_sclk
-#set_property -dict { PACKAGE_PIN D15   IOSTANDARD LVCMOS33 } [get_ports { ACL_CSN }]; #IO_L12P_T1_MRCC_15 Sch=acl_csn
-#set_property -dict { PACKAGE_PIN B13   IOSTANDARD LVCMOS33 } [get_ports { ACL_INT[1] }]; #IO_L2P_T0_AD8P_15 Sch=acl_int[1]
-#set_property -dict { PACKAGE_PIN C16   IOSTANDARD LVCMOS33 } [get_ports { ACL_INT[2] }]; #IO_L20P_T3_A20_15 Sch=acl_int[2]
-
-
-##Temperature Sensor
-
-#set_property -dict { PACKAGE_PIN C14   IOSTANDARD LVCMOS33 } [get_ports { TMP_SCL }]; #IO_L1N_T0_AD0N_15 Sch=tmp_scl
-#set_property -dict { PACKAGE_PIN C15   IOSTANDARD LVCMOS33 } [get_ports { TMP_SDA }]; #IO_L12N_T1_MRCC_15 Sch=tmp_sda
-#set_property -dict { PACKAGE_PIN D13   IOSTANDARD LVCMOS33 } [get_ports { TMP_INT }]; #IO_L6N_T0_VREF_15 Sch=tmp_int
-#set_property -dict { PACKAGE_PIN B14   IOSTANDARD LVCMOS33 } [get_ports { TMP_CT }]; #IO_L2N_T0_AD8N_15 Sch=tmp_ct
-
-##Omnidirectional Microphone
-
-#set_property -dict { PACKAGE_PIN J5    IOSTANDARD LVCMOS33 } [get_ports { M_CLK }]; #IO_25_35 Sch=m_clk
-#set_property -dict { PACKAGE_PIN H5    IOSTANDARD LVCMOS33 } [get_ports { M_DATA }]; #IO_L24N_T3_35 Sch=m_data
-#set_property -dict { PACKAGE_PIN F5    IOSTANDARD LVCMOS33 } [get_ports { M_LRSEL }]; #IO_0_35 Sch=m_lrsel
-
-
-##PWM Audio Amplifier
-
-#set_property -dict { PACKAGE_PIN A11   IOSTANDARD LVCMOS33 } [get_ports { AUD_PWM }]; #IO_L4N_T0_15 Sch=aud_pwm
-#set_property -dict { PACKAGE_PIN D12   IOSTANDARD LVCMOS33 } [get_ports { AUD_SD }]; #IO_L6P_T0_15 Sch=aud_sd
-
-
-##USB-RS232 Interface
-
-#set_property -dict { PACKAGE_PIN C4    IOSTANDARD LVCMOS33 } [get_ports { UART_TXD_IN }]; #IO_L7P_T1_AD6P_35 Sch=uart_txd_in
-#set_property -dict { PACKAGE_PIN D4    IOSTANDARD LVCMOS33 } [get_ports { UART_RXD_OUT }]; #IO_L11N_T1_SRCC_35 Sch=uart_rxd_out
-#set_property -dict { PACKAGE_PIN D3    IOSTANDARD LVCMOS33 } [get_ports { UART_CTS }]; #IO_L12N_T1_MRCC_35 Sch=uart_cts
-#set_property -dict { PACKAGE_PIN E5    IOSTANDARD LVCMOS33 } [get_ports { UART_RTS }]; #IO_L5N_T0_AD13N_35 Sch=uart_rts
-
-##USB HID (PS/2)
-
-#set_property -dict { PACKAGE_PIN F4    IOSTANDARD LVCMOS33 } [get_ports { PS2_CLK }]; #IO_L13P_T2_MRCC_35 Sch=ps2_clk
-#set_property -dict { PACKAGE_PIN B2    IOSTANDARD LVCMOS33 } [get_ports { PS2_DATA }]; #IO_L10N_T1_AD15N_35 Sch=ps2_data
-
-
-##SMSC Ethernet PHY
-
-#set_property -dict { PACKAGE_PIN C9    IOSTANDARD LVCMOS33 } [get_ports { ETH_MDC }]; #IO_L11P_T1_SRCC_16 Sch=eth_mdc
-#set_property -dict { PACKAGE_PIN A9    IOSTANDARD LVCMOS33 } [get_ports { ETH_MDIO }]; #IO_L14N_T2_SRCC_16 Sch=eth_mdio
-#set_property -dict { PACKAGE_PIN B3    IOSTANDARD LVCMOS33 } [get_ports { ETH_RSTN }]; #IO_L10P_T1_AD15P_35 Sch=eth_rstn
-#set_property -dict { PACKAGE_PIN D9    IOSTANDARD LVCMOS33 } [get_ports { ETH_CRSDV }]; #IO_L6N_T0_VREF_16 Sch=eth_crsdv
-#set_property -dict { PACKAGE_PIN C10   IOSTANDARD LVCMOS33 } [get_ports { ETH_RXERR }]; #IO_L13N_T2_MRCC_16 Sch=eth_rxerr
-#set_property -dict { PACKAGE_PIN C11   IOSTANDARD LVCMOS33 } [get_ports { ETH_RXD[0] }]; #IO_L13P_T2_MRCC_16 Sch=eth_rxd[0]
-#set_property -dict { PACKAGE_PIN D10   IOSTANDARD LVCMOS33 } [get_ports { ETH_RXD[1] }]; #IO_L19N_T3_VREF_16 Sch=eth_rxd[1]
-#set_property -dict { PACKAGE_PIN B9    IOSTANDARD LVCMOS33 } [get_ports { ETH_TXEN }]; #IO_L11N_T1_SRCC_16 Sch=eth_txen
-#set_property -dict { PACKAGE_PIN A10   IOSTANDARD LVCMOS33 } [get_ports { ETH_TXD[0] }]; #IO_L14P_T2_SRCC_16 Sch=eth_txd[0]
-#set_property -dict { PACKAGE_PIN A8    IOSTANDARD LVCMOS33 } [get_ports { ETH_TXD[1] }]; #IO_L12N_T1_MRCC_16 Sch=eth_txd[1]
-#set_property -dict { PACKAGE_PIN D5    IOSTANDARD LVCMOS33 } [get_ports { ETH_REFCLK }]; #IO_L11P_T1_SRCC_35 Sch=eth_refclk
-#set_property -dict { PACKAGE_PIN B8    IOSTANDARD LVCMOS33 } [get_ports { ETH_INTN }]; #IO_L12P_T1_MRCC_16 Sch=eth_intn
-
-
-##Quad SPI Flash
-
-#set_property -dict { PACKAGE_PIN K17   IOSTANDARD LVCMOS33 } [get_ports { QSPI_DQ[0] }]; #IO_L1P_T0_D00_MOSI_14 Sch=qspi_dq[0]
-#set_property -dict { PACKAGE_PIN K18   IOSTANDARD LVCMOS33 } [get_ports { QSPI_DQ[1] }]; #IO_L1N_T0_D01_DIN_14 Sch=qspi_dq[1]
-#set_property -dict { PACKAGE_PIN L14   IOSTANDARD LVCMOS33 } [get_ports { QSPI_DQ[2] }]; #IO_L2P_T0_D02_14 Sch=qspi_dq[2]
-#set_property -dict { PACKAGE_PIN M14   IOSTANDARD LVCMOS33 } [get_ports { QSPI_DQ[3] }]; #IO_L2N_T0_D03_14 Sch=qspi_dq[3]
-#set_property -dict { PACKAGE_PIN L13   IOSTANDARD LVCMOS33 } [get_ports { QSPI_CSN }]; #IO_L6P_T0_FCS_B_14 Sch=qspi_csn
-
-
-
-
-
-
-
-
-
-
-
-
-
+module oled_test_top(
+    input wire clk,           // 100MHz clock
+    input wire rst,           // Reset button (BTNC)
+    inout wire sda,           // I2C data
+    output wire scl,          // I2C clock
+    output wire [15:0] led    // Debug LEDs
+);
+
+    // SSD1306 OLED I2C address (try 0x3C, if doesn't work try 0x3D)
+    parameter I2C_ADDR = 7'h3C;
+    
+    wire sda_out, sda_en;
+    wire [7:0] state_debug;
+    wire scl_out;
+    
+    // Tri-state SDA
+    assign sda = sda_en ? sda_out : 1'bz;
+    assign scl = scl_out;
+    
+    // Debug LEDs show more info
+    wire i2c_busy_w, i2c_done_w;
+    wire [3:0] i2c_state_debug;
+    assign led = {i2c_state_debug, i2c_busy_w, i2c_done_w, sda, scl, state_debug};
+    
+    ssd1306_oled #(
+        .I2C_ADDR(I2C_ADDR)
+    ) oled (
+        .clk(clk),
+        .rst(rst),
+        .scl(scl_out),
+        .sda_out(sda_out),
+        .sda_in(sda),
+        .sda_en(sda_en),
+        .state_debug(state_debug),
+        .i2c_state_debug(i2c_state_debug)
+    );
+
+endmodule
+
+module ssd1306_oled #(
+    parameter I2C_ADDR = 7'h3C
+)(
+    input wire clk,
+    input wire rst,
+    output wire scl,
+    output wire sda_out,
+    input wire sda_in,
+    output wire sda_en,
+    output wire [7:0] state_debug,
+    output wire i2c_busy_w,
+    output wire i2c_done_w,
+    output wire [3:0] i2c_state_debug
+);
+
+    // States
+    localparam IDLE = 0, INIT = 1, SEND_CMD = 2, SEND_DATA = 3, 
+               CLEAR_SCREEN = 4, WRITE_TEXT = 5, DONE = 6, WAIT = 7;
+    
+    reg [7:0] state;
+    reg [31:0] delay_cnt;
+    reg [7:0] init_step;
+    reg [15:0] pixel_index;
+    reg [15:0] char_index;
+    
+    // I2C control signals
+    reg i2c_start;
+    reg [7:0] i2c_data;
+    reg is_command;  // 0 = command, 1 = data
+    wire i2c_busy;
+    wire i2c_done;
+    
+    assign state_debug = state;
+    assign i2c_busy_w = i2c_busy;
+    assign i2c_done_w = i2c_done;
+    
+    // SSD1306 initialization commands for 128x64 OLED
+    reg [7:0] init_cmds [0:25];
+    initial begin
+        init_cmds[0]  = 8'hAE; // Display OFF
+        init_cmds[1]  = 8'hD5; // Set display clock divide
+        init_cmds[2]  = 8'h80; // Suggested ratio 0x80
+        init_cmds[3]  = 8'hA8; // Set multiplex
+        init_cmds[4]  = 8'h3F; // 1/64 duty (0x3F for 128x64)
+        init_cmds[5]  = 8'hD3; // Set display offset
+        init_cmds[6]  = 8'h00; // No offset
+        init_cmds[7]  = 8'h40; // Set start line address (0x40)
+        init_cmds[8]  = 8'h8D; // Charge pump setting
+        init_cmds[9]  = 8'h14; // Enable charge pump (0x14)
+        init_cmds[10] = 8'h20; // Set Memory Addressing Mode
+        init_cmds[11] = 8'h00; // 0x00 = Horizontal Addressing Mode
+        init_cmds[12] = 8'hA1; // Set Segment Re-map (0xA1)
+        init_cmds[13] = 8'hC8; // Set COM Output Scan Direction (0xC8)
+        init_cmds[14] = 8'hDA; // Set COM Pins hardware configuration
+        init_cmds[15] = 8'h12; // 0x12 for 128x64
+        init_cmds[16] = 8'h81; // Set contrast control
+        init_cmds[17] = 8'hCF; // 0xCF (max brightness)
+        init_cmds[18] = 8'hD9; // Set pre-charge period
+        init_cmds[19] = 8'hF1; // 0xF1
+        init_cmds[20] = 8'hDB; // Set VCOMH deselect level
+        init_cmds[21] = 8'h40; // 0x40
+        init_cmds[22] = 8'hA4; // Set Entire Display ON/OFF (0xA4 = normal)
+        init_cmds[23] = 8'hA6; // Set Normal/Inverse Display (0xA6 = normal)
+        init_cmds[24] = 8'h2E; // Deactivate scroll
+        init_cmds[25] = 8'hAF; // Display ON (0xAF)
+    end
+    
+    // Simple 5x8 font for "Hello World!"
+    reg [7:0] char_H [0:4]; reg [7:0] char_e [0:4]; reg [7:0] char_l [0:4];
+    reg [7:0] char_o [0:4]; reg [7:0] char_W [0:4]; reg [7:0] char_r [0:4];
+    reg [7:0] char_d [0:4]; reg [7:0] char_spc [0:4]; reg [7:0] char_exc [0:4];
+    
+    initial begin
+        // H
+        char_H[0] = 8'b01111111; char_H[1] = 8'b00001000; char_H[2] = 8'b00001000;
+        char_H[3] = 8'b00001000; char_H[4] = 8'b01111111;
+        // e
+        char_e[0] = 8'b00111000; char_e[1] = 8'b01010100; char_e[2] = 8'b01010100;
+        char_e[3] = 8'b01010100; char_e[4] = 8'b00011000;
+        // l
+        char_l[0] = 8'b00000000; char_l[1] = 8'b01000001; char_l[2] = 8'b01111111;
+        char_l[3] = 8'b01000000; char_l[4] = 8'b00000000;
+        // o
+        char_o[0] = 8'b00111000; char_o[1] = 8'b01000100; char_o[2] = 8'b01000100;
+        char_o[3] = 8'b01000100; char_o[4] = 8'b00111000;
+        // space
+        char_spc[0] = 8'b00000000; char_spc[1] = 8'b00000000; char_spc[2] = 8'b00000000;
+        char_spc[3] = 8'b00000000; char_spc[4] = 8'b00000000;
+        // W
+        char_W[0] = 8'b01111111; char_W[1] = 8'b00100000; char_W[2] = 8'b00011000;
+        char_W[3] = 8'b00100000; char_W[4] = 8'b01111111;
+        // r
+        char_r[0] = 8'b01111100; char_r[1] = 8'b00001000; char_r[2] = 8'b00000100;
+        char_r[3] = 8'b00000100; char_r[4] = 8'b00001000;
+        // d
+        char_d[0] = 8'b00111000; char_d[1] = 8'b01000100; char_d[2] = 8'b01000100;
+        char_d[3] = 8'b01000100; char_d[4] = 8'b01111111;
+        // !
+        char_exc[0] = 8'b00000000; char_exc[1] = 8'b00000000; char_exc[2] = 8'b01011111;
+        char_exc[3] = 8'b00000000; char_exc[4] = 8'b00000000;
+    end
+    
+    reg [7:0] text_string [0:11];
+    reg [3:0] char_byte;
+    
+    initial begin
+        text_string[0] = 0;  // H
+        text_string[1] = 1;  // e
+        text_string[2] = 2;  // l
+        text_string[3] = 2;  // l
+        text_string[4] = 3;  // o
+        text_string[5] = 4;  // space
+        text_string[6] = 5;  // W
+        text_string[7] = 3;  // o
+        text_string[8] = 6;  // r
+        text_string[9] = 2;  // l
+        text_string[10] = 7; // d
+        text_string[11] = 8; // !
+    end
+    
+    // I2C master instance
+    i2c_master_oled i2c (
+        .clk(clk),
+        .rst(rst),
+        .start(i2c_start),
+        .addr(I2C_ADDR),
+        .data(i2c_data),
+        .is_cmd(~is_command),
+        .scl(scl),
+        .sda_out(sda_out),
+        .sda_in(sda_in),
+        .sda_en(sda_en),
+        .busy(i2c_busy),
+        .done(i2c_done),
+        .state_debug(i2c_state_debug)
+    );
+    
+    // Get character bitmap
+    function [7:0] get_char_byte;
+        input [7:0] char_idx;
+        input [2:0] byte_idx;
+        begin
+            case (char_idx)
+                0: get_char_byte = char_H[byte_idx];
+                1: get_char_byte = char_e[byte_idx];
+                2: get_char_byte = char_l[byte_idx];
+                3: get_char_byte = char_o[byte_idx];
+                4: get_char_byte = char_spc[byte_idx];
+                5: get_char_byte = char_W[byte_idx];
+                6: get_char_byte = char_r[byte_idx];
+                7: get_char_byte = char_d[byte_idx];
+                8: get_char_byte = char_exc[byte_idx];
+                default: get_char_byte = 8'h00;
+            endcase
+        end
+    endfunction
+    
+    // Main state machine
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            state <= IDLE;
+            delay_cnt <= 0;
+            init_step <= 0;
+            pixel_index <= 0;
+            char_index <= 0;
+            i2c_start <= 0;
+            is_command <= 0;
+            char_byte <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    if (delay_cnt < 10000000) begin  // Wait 100ms for power stabilization
+                        delay_cnt <= delay_cnt + 1;
+                    end else begin
+                        delay_cnt <= 0;
+                        state <= INIT;
+                    end
+                end
+                
+                INIT: begin
+                    if (!i2c_busy && init_step < 26) begin
+                        i2c_data <= init_cmds[init_step];
+                        is_command <= 0;  // Command mode
+                        i2c_start <= 1;
+                        state <= WAIT;
+                    end else if (init_step >= 26) begin
+                        init_step <= 0;
+                        pixel_index <= 0;
+                        char_index <= 0;
+                        char_byte <= 0;
+                        state <= CLEAR_SCREEN;
+                    end
+                end
+                
+                CLEAR_SCREEN: begin
+                    if (!i2c_busy && pixel_index < 1024) begin  // 128x64/8 = 1024 bytes
+                        i2c_data <= 8'h00;  // Clear pixel (was 8'hFF)
+                        is_command <= 1;  // Data mode
+                        i2c_start <= 1;
+                        pixel_index <= pixel_index + 1;
+                        state <= WAIT;
+                    end else if (pixel_index >= 1024) begin
+                        pixel_index <= 0;
+                        char_index <= 0;
+                        char_byte <= 0;
+                        state <= WRITE_TEXT;  // Go to text writing (was DONE)
+                    end
+                end
+                
+                WRITE_TEXT: begin
+                    if (!i2c_busy) begin
+                        if (char_index == 0 && char_byte == 0) begin
+                            // Set page (row) to 3
+                            i2c_data <= 8'hB3;  // Page 3 (middle of screen)
+                            is_command <= 0;
+                            i2c_start <= 1;
+                            char_byte <= 1;
+                            state <= WAIT;
+                        end else if (char_index == 0 && char_byte == 1) begin
+                            // Set column to 20 - lower nibble
+                            i2c_data <= 8'h00 | (20 & 8'h0F);
+                            is_command <= 0;
+                            i2c_start <= 1;
+                            char_byte <= 2;
+                            state <= WAIT;
+                        end else if (char_index == 0 && char_byte == 2) begin
+                            // Set column to 20 - upper nibble
+                            i2c_data <= 8'h10 | ((20 >> 4) & 8'h0F);
+                            is_command <= 0;
+                            i2c_start <= 1;
+                            char_byte <= 3;
+                            state <= WAIT;
+                        end else if (char_index < 12) begin
+                            // Write character bytes
+                            if (char_byte >= 3 && char_byte < 8) begin
+                                i2c_data <= get_char_byte(text_string[char_index], char_byte - 3);
+                                is_command <= 1;  // Data mode
+                                i2c_start <= 1;
+                                char_byte <= char_byte + 1;
+                                state <= WAIT;
+                            end else if (char_byte == 8) begin
+                                // Add space between characters
+                                i2c_data <= 8'h00;
+                                is_command <= 1;
+                                i2c_start <= 1;
+                                char_byte <= 3;
+                                char_index <= char_index + 1;
+                                state <= WAIT;
+                            end
+                        end else begin
+                            state <= DONE;
+                        end
+                    end
+                end
+                
+                WAIT: begin
+                    i2c_start <= 0;
+                    // Add timeout to prevent infinite wait
+                    if (delay_cnt > 50000000) begin  // 500ms timeout
+                        delay_cnt <= 0;
+                        // Timeout - assume failure, try to continue
+                        if (init_step < 26) begin
+                            init_step <= init_step + 1;
+                            state <= INIT;
+                        end else begin
+                            state <= DONE;  // Give up
+                        end
+                    end else if (i2c_done) begin
+                        delay_cnt <= 0;
+                        // Return to appropriate state based on current operation
+                        if (init_step < 26) begin
+                            init_step <= init_step + 1;
+                            state <= INIT;
+                        end else if (pixel_index > 0 && pixel_index < 1024) begin
+                            state <= CLEAR_SCREEN;
+                        end else if (char_index < 12 || char_byte > 0) begin
+                            state <= WRITE_TEXT;
+                        end else begin
+                            state <= DONE;
+                        end
+                    end else begin
+                        delay_cnt <= delay_cnt + 1;
+                    end
+                end
+                
+                DONE: begin
+                    state <= DONE;  // Stay done
+                end
+            endcase
+        end
+    end
+
+endmodule
+
+// I2C Master for OLED
+module i2c_master_oled(
+    input wire clk,
+    input wire rst,
+    input wire start,
+    input wire [6:0] addr,
+    input wire [7:0] data,
+    input wire is_cmd,  // 0 = command, 1 = data
+    output reg scl,
+    output reg sda_out,
+    input wire sda_in,
+    output reg sda_en,
+    output reg busy,
+    output reg done,
+    output wire [3:0] state_debug
+);
+
+    localparam IDLE = 0, START_BIT = 1, ADDR_BITS = 2, ACK1 = 3,
+               CTRL_BYTE = 4, ACK2 = 5, DATA_BITS = 6, ACK3 = 7, STOP_BIT = 8;
+    
+    reg [3:0] state;
+    assign state_debug = state;
+    reg [3:0] bit_cnt;
+    reg [15:0] clk_cnt;
+    reg [7:0] data_buf;
+    reg [7:0] ctrl_byte;
+    
+    // I2C clock ~100kHz (meets timing specs: tcycle min 2.5us = 400kHz max)
+    // At 100MHz: 1000 cycles = 10us period = 100kHz
+    localparam CLK_DIV = 1000;
+    
+    // Timing constants (at 100MHz, 1 cycle = 10ns)
+    // tHSTART min = 0.6us = 60 cycles
+    // tSD min = 100ns = 10 cycles  
+    // tHD min = 300ns = 30 cycles (for SDAIN)
+    // tSSTOP min = 0.6us = 60 cycles
+    // tIDLE min = 1.3us = 130 cycles
+    localparam T_HSTART = 100;  // 1us (well above 0.6us min)
+    localparam T_SETUP = 50;     // 0.5us (well above 100ns min)
+    localparam T_HOLD = 50;      // 0.5us (well above 300ns min)
+    localparam T_SSTOP = 100;    // 1us (well above 0.6us min)
+    localparam T_IDLE = 200;     // 2us (well above 1.3us min)
+    
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            state <= IDLE;
+            scl <= 1;
+            sda_out <= 1;
+            sda_en <= 1;
+            busy <= 0;
+            done <= 0;
+            bit_cnt <= 0;
+            clk_cnt <= T_IDLE;  // Start with idle time satisfied
+        end else begin
+            done <= 0;
+            
+            case (state)
+                IDLE: begin
+                    scl <= 1;
+                    sda_out <= 1;
+                    sda_en <= 1;
+                    if (start && clk_cnt >= T_IDLE) begin
+                        data_buf <= data;
+                        ctrl_byte <= is_cmd ? 8'h00 : 8'h40;  // Co=0, D/C=0 for command (0x00), D/C=1 for data (0x40)
+                        busy <= 1;
+                        state <= START_BIT;
+                        clk_cnt <= 0;
+                    end else begin
+                        clk_cnt <= clk_cnt + 1;
+                    end
+                end
+                
+                START_BIT: begin
+                    if (clk_cnt < T_HSTART) begin
+                        clk_cnt <= clk_cnt + 1;
+                        sda_out <= 0;  // Start condition: SDA high-to-low while SCL high
+                        scl <= 1;
+                    end else begin
+                        clk_cnt <= 0;
+                        bit_cnt <= 0;
+                        scl <= 0;
+                        state <= ADDR_BITS;
+                    end
+                end
+                
+                ADDR_BITS: begin
+                    if (clk_cnt < T_HOLD) begin
+                        // Hold time: set data early, keep stable after SCL goes low
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        if (bit_cnt < 7)
+                            sda_out <= addr[6 - bit_cnt];
+                        else
+                            sda_out <= 0;  // Write bit
+                    end else if (clk_cnt < T_HOLD + T_SETUP) begin
+                        // Setup time: data already stable before SCL goes high
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        if (bit_cnt < 7)
+                            sda_out <= addr[6 - bit_cnt];
+                        else
+                            sda_out <= 0;
+                    end else if (clk_cnt < T_HOLD + T_SETUP + CLK_DIV/2) begin
+                        // SCL high phase
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 1;
+                    end else begin
+                        clk_cnt <= 0;
+                        if (bit_cnt < 7) begin
+                            bit_cnt <= bit_cnt + 1;
+                        end else begin
+                            bit_cnt <= 0;
+                            state <= ACK1;
+                        end
+                    end
+                end
+                
+                ACK1: begin
+                    if (clk_cnt < T_HOLD) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        sda_en <= 0;  // Release SDA for ACK
+                    end else if (clk_cnt < T_HOLD + T_SETUP) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        sda_en <= 0;  // Keep SDA released
+                    end else if (clk_cnt < T_HOLD + T_SETUP + CLK_DIV/2) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 1;  // Sample ACK (SDA should be low)
+                        sda_en <= 0;
+                    end else begin
+                        clk_cnt <= 0;
+                        sda_en <= 1;
+                        state <= CTRL_BYTE;
+                    end
+                end
+                
+                CTRL_BYTE: begin
+                    if (clk_cnt < T_HOLD) begin
+                        // Hold time: set data early
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        sda_out <= ctrl_byte[7 - bit_cnt];
+                    end else if (clk_cnt < T_HOLD + T_SETUP) begin
+                        // Setup time: data already stable
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        sda_out <= ctrl_byte[7 - bit_cnt];
+                    end else if (clk_cnt < T_HOLD + T_SETUP + CLK_DIV/2) begin
+                        // SCL high phase
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 1;
+                    end else begin
+                        clk_cnt <= 0;
+                        if (bit_cnt < 7) begin
+                            bit_cnt <= bit_cnt + 1;
+                        end else begin
+                            bit_cnt <= 0;
+                            state <= ACK2;
+                        end
+                    end
+                end
+                
+                ACK2: begin
+                    if (clk_cnt < T_HOLD) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        sda_en <= 0;
+                    end else if (clk_cnt < T_HOLD + T_SETUP) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        sda_en <= 0;
+                    end else if (clk_cnt < T_HOLD + T_SETUP + CLK_DIV/2) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 1;  // Sample ACK
+                        sda_en <= 0;
+                    end else begin
+                        clk_cnt <= 0;
+                        sda_en <= 1;
+                        state <= DATA_BITS;
+                    end
+                end
+                
+                DATA_BITS: begin
+                    if (clk_cnt < T_HOLD) begin
+                        // Hold time: set data early
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        sda_out <= data_buf[7 - bit_cnt];
+                    end else if (clk_cnt < T_HOLD + T_SETUP) begin
+                        // Setup time: data already stable
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        sda_out <= data_buf[7 - bit_cnt];
+                    end else if (clk_cnt < T_HOLD + T_SETUP + CLK_DIV/2) begin
+                        // SCL high phase
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 1;
+                    end else begin
+                        clk_cnt <= 0;
+                        if (bit_cnt < 7) begin
+                            bit_cnt <= bit_cnt + 1;
+                        end else begin
+                            bit_cnt <= 0;
+                            state <= ACK3;
+                        end
+                    end
+                end
+                
+                ACK3: begin
+                    if (clk_cnt < T_HOLD) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        sda_en <= 0;
+                    end else if (clk_cnt < T_HOLD + T_SETUP) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        sda_en <= 0;
+                    end else if (clk_cnt < T_HOLD + T_SETUP + CLK_DIV/2) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 1;  // Sample ACK
+                        sda_en <= 0;
+                    end else begin
+                        clk_cnt <= 0;
+                        sda_en <= 1;
+                        state <= STOP_BIT;
+                    end
+                end
+                
+                STOP_BIT: begin
+                    if (clk_cnt < T_HOLD) begin
+                        // Bring SCL low first
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        sda_out <= 0;
+                    end else if (clk_cnt < T_HOLD + T_SETUP) begin
+                        // Setup: bring SCL high while SDA is still low
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 1;
+                        sda_out <= 0;
+                    end else if (clk_cnt < T_HOLD + T_SETUP + T_SSTOP) begin
+                        // Stop condition: SDA low-to-high while SCL high (tSSTOP)
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 1;
+                        sda_out <= 1;
+                    end else begin
+                        clk_cnt <= 0;
+                        done <= 1;
+                        busy <= 0;
+                        state <= IDLE;
+                    end
+                end
+            endcase
+        end
+    end
+
+endmodule
