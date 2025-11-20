@@ -52,12 +52,15 @@ module ssd1306_oled #(
     output wire [3:0] i2c_state_debug
 );
 
-    // States - simplified
-    localparam IDLE = 0, INIT = 1, WAIT = 2, DONE = 3;
+    // States
+    localparam IDLE = 0, INIT = 1, SEND_CMD = 2, SEND_DATA = 3, 
+               CLEAR_SCREEN = 4, WRITE_TEXT = 5, DONE = 6, WAIT = 7;
     
     reg [7:0] state;
     reg [31:0] delay_cnt;
-    reg [2:0] init_step;  // Only need 3 steps now
+    reg [7:0] init_step;
+    reg [15:0] pixel_index;
+    reg [15:0] char_index;
     
     // I2C control signals
     reg i2c_start;
@@ -70,13 +73,88 @@ module ssd1306_oled #(
     assign i2c_busy_w = i2c_busy;
     assign i2c_done_w = i2c_done;
     
-    // Minimal SSD1306 initialization - just turn on the display
-    // Only 3 essential commands:
-    reg [7:0] init_cmds [0:2];
+    // SSD1306 initialization commands for 128x64 OLED
+    reg [7:0] init_cmds [0:25];
     initial begin
-        init_cmds[0] = 8'h8D; // Charge pump setting
-        init_cmds[1] = 8'h14; // Enable charge pump (required for display power)
-        init_cmds[2] = 8'hAF; // Display ON
+        init_cmds[0]  = 8'hAE; // Display OFF
+        init_cmds[1]  = 8'hD5; // Set display clock divide
+        init_cmds[2]  = 8'h80; // Suggested ratio 0x80
+        init_cmds[3]  = 8'hA8; // Set multiplex
+        init_cmds[4]  = 8'h3F; // 1/64 duty (0x3F for 128x64)
+        init_cmds[5]  = 8'hD3; // Set display offset
+        init_cmds[6]  = 8'h00; // No offset
+        init_cmds[7]  = 8'h40; // Set start line address (0x40)
+        init_cmds[8]  = 8'h8D; // Charge pump setting
+        init_cmds[9]  = 8'h14; // Enable charge pump (0x14)
+        init_cmds[10] = 8'h20; // Set Memory Addressing Mode
+        init_cmds[11] = 8'h00; // 0x00 = Horizontal Addressing Mode
+        init_cmds[12] = 8'hA1; // Set Segment Re-map (0xA1)
+        init_cmds[13] = 8'hC8; // Set COM Output Scan Direction (0xC8)
+        init_cmds[14] = 8'hDA; // Set COM Pins hardware configuration
+        init_cmds[15] = 8'h12; // 0x12 for 128x64
+        init_cmds[16] = 8'h81; // Set contrast control
+        init_cmds[17] = 8'hCF; // 0xCF (max brightness)
+        init_cmds[18] = 8'hD9; // Set pre-charge period
+        init_cmds[19] = 8'hF1; // 0xF1
+        init_cmds[20] = 8'hDB; // Set VCOMH deselect level
+        init_cmds[21] = 8'h40; // 0x40
+        init_cmds[22] = 8'hA4; // Set Entire Display ON/OFF (0xA4 = normal)
+        init_cmds[23] = 8'hA6; // Set Normal/Inverse Display (0xA6 = normal)
+        init_cmds[24] = 8'h2E; // Deactivate scroll
+        init_cmds[25] = 8'hAF; // Display ON (0xAF)
+    end
+    
+    // Simple 5x8 font for "Hello World!"
+    reg [7:0] char_H [0:4]; reg [7:0] char_e [0:4]; reg [7:0] char_l [0:4];
+    reg [7:0] char_o [0:4]; reg [7:0] char_W [0:4]; reg [7:0] char_r [0:4];
+    reg [7:0] char_d [0:4]; reg [7:0] char_spc [0:4]; reg [7:0] char_exc [0:4];
+    
+    initial begin
+        // H
+        char_H[0] = 8'b01111111; char_H[1] = 8'b00001000; char_H[2] = 8'b00001000;
+        char_H[3] = 8'b00001000; char_H[4] = 8'b01111111;
+        // e
+        char_e[0] = 8'b00111000; char_e[1] = 8'b01010100; char_e[2] = 8'b01010100;
+        char_e[3] = 8'b01010100; char_e[4] = 8'b00011000;
+        // l
+        char_l[0] = 8'b00000000; char_l[1] = 8'b01000001; char_l[2] = 8'b01111111;
+        char_l[3] = 8'b01000000; char_l[4] = 8'b00000000;
+        // o
+        char_o[0] = 8'b00111000; char_o[1] = 8'b01000100; char_o[2] = 8'b01000100;
+        char_o[3] = 8'b01000100; char_o[4] = 8'b00111000;
+        // space
+        char_spc[0] = 8'b00000000; char_spc[1] = 8'b00000000; char_spc[2] = 8'b00000000;
+        char_spc[3] = 8'b00000000; char_spc[4] = 8'b00000000;
+        // W
+        char_W[0] = 8'b01111111; char_W[1] = 8'b00100000; char_W[2] = 8'b00011000;
+        char_W[3] = 8'b00100000; char_W[4] = 8'b01111111;
+        // r
+        char_r[0] = 8'b01111100; char_r[1] = 8'b00001000; char_r[2] = 8'b00000100;
+        char_r[3] = 8'b00000100; char_r[4] = 8'b00001000;
+        // d
+        char_d[0] = 8'b00111000; char_d[1] = 8'b01000100; char_d[2] = 8'b01000100;
+        char_d[3] = 8'b01000100; char_d[4] = 8'b01111111;
+        // !
+        char_exc[0] = 8'b00000000; char_exc[1] = 8'b00000000; char_exc[2] = 8'b01011111;
+        char_exc[3] = 8'b00000000; char_exc[4] = 8'b00000000;
+    end
+    
+    reg [7:0] text_string [0:11];
+    reg [3:0] char_byte;
+    
+    initial begin
+        text_string[0] = 0;  // H
+        text_string[1] = 1;  // e
+        text_string[2] = 2;  // l
+        text_string[3] = 2;  // l
+        text_string[4] = 3;  // o
+        text_string[5] = 4;  // space
+        text_string[6] = 5;  // W
+        text_string[7] = 3;  // o
+        text_string[8] = 6;  // r
+        text_string[9] = 2;  // l
+        text_string[10] = 7; // d
+        text_string[11] = 8; // !
     end
     
     // I2C master instance
@@ -96,14 +174,37 @@ module ssd1306_oled #(
         .state_debug(i2c_state_debug)
     );
     
-    // Main state machine - simplified to just turn on display
+    // Get character bitmap
+    function [7:0] get_char_byte;
+        input [7:0] char_idx;
+        input [2:0] byte_idx;
+        begin
+            case (char_idx)
+                0: get_char_byte = char_H[byte_idx];
+                1: get_char_byte = char_e[byte_idx];
+                2: get_char_byte = char_l[byte_idx];
+                3: get_char_byte = char_o[byte_idx];
+                4: get_char_byte = char_spc[byte_idx];
+                5: get_char_byte = char_W[byte_idx];
+                6: get_char_byte = char_r[byte_idx];
+                7: get_char_byte = char_d[byte_idx];
+                8: get_char_byte = char_exc[byte_idx];
+                default: get_char_byte = 8'h00;
+            endcase
+        end
+    endfunction
+    
+    // Main state machine
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             state <= IDLE;
             delay_cnt <= 0;
             init_step <= 0;
+            pixel_index <= 0;
+            char_index <= 0;
             i2c_start <= 0;
             is_command <= 0;
+            char_byte <= 0;
         end else begin
             case (state)
                 IDLE: begin
@@ -116,31 +217,88 @@ module ssd1306_oled #(
                 end
                 
                 INIT: begin
-                    if (!i2c_busy && init_step < 3) begin
+                    if (!i2c_busy && init_step < 26) begin
                         i2c_data <= init_cmds[init_step];
-                        is_command <= 0;  // All are commands
+                        is_command <= 0;  // Command mode
                         i2c_start <= 1;
                         state <= WAIT;
-                    end else if (i2c_busy) begin
-                        // I2C has started, clear start signal
-                        i2c_start <= 0;
-                    end else if (init_step >= 3) begin
-                        // All commands sent, we're done
-                        state <= DONE;
+                    end else if (init_step >= 26) begin
+                        init_step <= 0;
+                        pixel_index <= 0;
+                        char_index <= 0;
+                        char_byte <= 0;
+                        state <= CLEAR_SCREEN;
+                    end
+                end
+                
+                CLEAR_SCREEN: begin
+                    if (!i2c_busy && pixel_index < 1024) begin  // 128x64/8 = 1024 bytes
+                        i2c_data <= 8'h00;  // Clear pixel (was 8'hFF)
+                        is_command <= 1;  // Data mode
+                        i2c_start <= 1;
+                        pixel_index <= pixel_index + 1;
+                        state <= WAIT;
+                    end else if (pixel_index >= 1024) begin
+                        pixel_index <= 0;
+                        char_index <= 0;
+                        char_byte <= 0;
+                        state <= WRITE_TEXT;  // Go to text writing (was DONE)
+                    end
+                end
+                
+                WRITE_TEXT: begin
+                    if (!i2c_busy) begin
+                        if (char_index == 0 && char_byte == 0) begin
+                            // Set page (row) to 3
+                            i2c_data <= 8'hB3;  // Page 3 (middle of screen)
+                            is_command <= 0;
+                            i2c_start <= 1;
+                            char_byte <= 1;
+                            state <= WAIT;
+                        end else if (char_index == 0 && char_byte == 1) begin
+                            // Set column to 20 - lower nibble
+                            i2c_data <= 8'h00 | (20 & 8'h0F);
+                            is_command <= 0;
+                            i2c_start <= 1;
+                            char_byte <= 2;
+                            state <= WAIT;
+                        end else if (char_index == 0 && char_byte == 2) begin
+                            // Set column to 20 - upper nibble
+                            i2c_data <= 8'h10 | ((20 >> 4) & 8'h0F);
+                            is_command <= 0;
+                            i2c_start <= 1;
+                            char_byte <= 3;
+                            state <= WAIT;
+                        end else if (char_index < 12) begin
+                            // Write character bytes
+                            if (char_byte >= 3 && char_byte < 8) begin
+                                i2c_data <= get_char_byte(text_string[char_index], char_byte - 3);
+                                is_command <= 1;  // Data mode
+                                i2c_start <= 1;
+                                char_byte <= char_byte + 1;
+                                state <= WAIT;
+                            end else if (char_byte == 8) begin
+                                // Add space between characters
+                                i2c_data <= 8'h00;
+                                is_command <= 1;
+                                i2c_start <= 1;
+                                char_byte <= 3;
+                                char_index <= char_index + 1;
+                                state <= WAIT;
+                            end
+                        end else begin
+                            state <= DONE;
+                        end
                     end
                 end
                 
                 WAIT: begin
-                    // Clear start signal once I2C is busy
-                    if (i2c_busy) begin
-                        i2c_start <= 0;
-                    end
+                    i2c_start <= 0;
                     // Add timeout to prevent infinite wait
                     if (delay_cnt > 50000000) begin  // 500ms timeout
                         delay_cnt <= 0;
-                        i2c_start <= 0;
-                        // Timeout - try to continue or give up
-                        if (init_step < 3) begin
+                        // Timeout - assume failure, try to continue
+                        if (init_step < 26) begin
                             init_step <= init_step + 1;
                             state <= INIT;
                         end else begin
@@ -148,11 +306,14 @@ module ssd1306_oled #(
                         end
                     end else if (i2c_done) begin
                         delay_cnt <= 0;
-                        i2c_start <= 0;
-                        // Move to next command or finish
-                        if (init_step < 3) begin
+                        // Return to appropriate state based on current operation
+                        if (init_step < 26) begin
                             init_step <= init_step + 1;
                             state <= INIT;
+                        end else if (pixel_index > 0 && pixel_index < 1024) begin
+                            state <= CLEAR_SCREEN;
+                        end else if (char_index < 12 || char_byte > 0) begin
+                            state <= WRITE_TEXT;
                         end else begin
                             state <= DONE;
                         end
@@ -162,7 +323,7 @@ module ssd1306_oled #(
                 end
                 
                 DONE: begin
-                    state <= DONE;  // Stay done - display should be on now
+                    state <= DONE;  // Stay done
                 end
             endcase
         end
