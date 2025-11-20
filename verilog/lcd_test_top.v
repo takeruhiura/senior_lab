@@ -339,8 +339,21 @@ module i2c_master_oled(
     reg [7:0] data_buf;
     reg [7:0] ctrl_byte;
     
-    // I2C clock ~50kHz (slower for better reliability)
-    localparam CLK_DIV = 2000;
+    // I2C clock ~100kHz (meets timing specs: tcycle min 2.5us = 400kHz max)
+    // At 100MHz: 1000 cycles = 10us period = 100kHz
+    localparam CLK_DIV = 1000;
+    
+    // Timing constants (at 100MHz, 1 cycle = 10ns)
+    // tHSTART min = 0.6us = 60 cycles
+    // tSD min = 100ns = 10 cycles  
+    // tHD min = 300ns = 30 cycles (for SDAIN)
+    // tSSTOP min = 0.6us = 60 cycles
+    // tIDLE min = 1.3us = 130 cycles
+    localparam T_HSTART = 100;  // 1us (well above 0.6us min)
+    localparam T_SETUP = 50;     // 0.5us (well above 100ns min)
+    localparam T_HOLD = 50;      // 0.5us (well above 300ns min)
+    localparam T_SSTOP = 100;    // 1us (well above 0.6us min)
+    localparam T_IDLE = 200;     // 2us (well above 1.3us min)
     
     always @(posedge clk or posedge rst) begin
         if (rst) begin
@@ -351,7 +364,7 @@ module i2c_master_oled(
             busy <= 0;
             done <= 0;
             bit_cnt <= 0;
-            clk_cnt <= 0;
+            clk_cnt <= T_IDLE;  // Start with idle time satisfied
         end else begin
             done <= 0;
             
@@ -360,17 +373,19 @@ module i2c_master_oled(
                     scl <= 1;
                     sda_out <= 1;
                     sda_en <= 1;
-                    if (start) begin
+                    if (start && clk_cnt >= T_IDLE) begin
                         data_buf <= data;
-                        ctrl_byte <= is_cmd ? 8'h40 : 8'h00;  // Co=0, D/C=1 for data, 0 for command
+                        ctrl_byte <= is_cmd ? 8'h00 : 8'h40;  // Co=0, D/C=0 for command (0x00), D/C=1 for data (0x40)
                         busy <= 1;
                         state <= START_BIT;
                         clk_cnt <= 0;
+                    end else begin
+                        clk_cnt <= clk_cnt + 1;
                     end
                 end
                 
                 START_BIT: begin
-                    if (clk_cnt < CLK_DIV/2) begin
+                    if (clk_cnt < T_HSTART) begin
                         clk_cnt <= clk_cnt + 1;
                         sda_out <= 0;  // Start condition: SDA high-to-low while SCL high
                         scl <= 1;
@@ -383,14 +398,24 @@ module i2c_master_oled(
                 end
                 
                 ADDR_BITS: begin
-                    if (clk_cnt < CLK_DIV/2) begin
+                    if (clk_cnt < T_HOLD) begin
+                        // Hold time: set data early, keep stable after SCL goes low
                         clk_cnt <= clk_cnt + 1;
                         scl <= 0;
                         if (bit_cnt < 7)
                             sda_out <= addr[6 - bit_cnt];
                         else
                             sda_out <= 0;  // Write bit
-                    end else if (clk_cnt < CLK_DIV) begin
+                    end else if (clk_cnt < T_HOLD + T_SETUP) begin
+                        // Setup time: data already stable before SCL goes high
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        if (bit_cnt < 7)
+                            sda_out <= addr[6 - bit_cnt];
+                        else
+                            sda_out <= 0;
+                    end else if (clk_cnt < T_HOLD + T_SETUP + CLK_DIV/2) begin
+                        // SCL high phase
                         clk_cnt <= clk_cnt + 1;
                         scl <= 1;
                     end else begin
@@ -405,13 +430,18 @@ module i2c_master_oled(
                 end
                 
                 ACK1: begin
-                    if (clk_cnt < CLK_DIV/2) begin
+                    if (clk_cnt < T_HOLD) begin
                         clk_cnt <= clk_cnt + 1;
                         scl <= 0;
                         sda_en <= 0;  // Release SDA for ACK
-                    end else if (clk_cnt < CLK_DIV) begin
+                    end else if (clk_cnt < T_HOLD + T_SETUP) begin
                         clk_cnt <= clk_cnt + 1;
-                        scl <= 1;
+                        scl <= 0;
+                        sda_en <= 0;  // Keep SDA released
+                    end else if (clk_cnt < T_HOLD + T_SETUP + CLK_DIV/2) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 1;  // Sample ACK (SDA should be low)
+                        sda_en <= 0;
                     end else begin
                         clk_cnt <= 0;
                         sda_en <= 1;
@@ -420,11 +450,18 @@ module i2c_master_oled(
                 end
                 
                 CTRL_BYTE: begin
-                    if (clk_cnt < CLK_DIV/2) begin
+                    if (clk_cnt < T_HOLD) begin
+                        // Hold time: set data early
                         clk_cnt <= clk_cnt + 1;
                         scl <= 0;
                         sda_out <= ctrl_byte[7 - bit_cnt];
-                    end else if (clk_cnt < CLK_DIV) begin
+                    end else if (clk_cnt < T_HOLD + T_SETUP) begin
+                        // Setup time: data already stable
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        sda_out <= ctrl_byte[7 - bit_cnt];
+                    end else if (clk_cnt < T_HOLD + T_SETUP + CLK_DIV/2) begin
+                        // SCL high phase
                         clk_cnt <= clk_cnt + 1;
                         scl <= 1;
                     end else begin
@@ -439,13 +476,18 @@ module i2c_master_oled(
                 end
                 
                 ACK2: begin
-                    if (clk_cnt < CLK_DIV/2) begin
+                    if (clk_cnt < T_HOLD) begin
                         clk_cnt <= clk_cnt + 1;
                         scl <= 0;
                         sda_en <= 0;
-                    end else if (clk_cnt < CLK_DIV) begin
+                    end else if (clk_cnt < T_HOLD + T_SETUP) begin
                         clk_cnt <= clk_cnt + 1;
-                        scl <= 1;
+                        scl <= 0;
+                        sda_en <= 0;
+                    end else if (clk_cnt < T_HOLD + T_SETUP + CLK_DIV/2) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 1;  // Sample ACK
+                        sda_en <= 0;
                     end else begin
                         clk_cnt <= 0;
                         sda_en <= 1;
@@ -454,11 +496,18 @@ module i2c_master_oled(
                 end
                 
                 DATA_BITS: begin
-                    if (clk_cnt < CLK_DIV/2) begin
+                    if (clk_cnt < T_HOLD) begin
+                        // Hold time: set data early
                         clk_cnt <= clk_cnt + 1;
                         scl <= 0;
                         sda_out <= data_buf[7 - bit_cnt];
-                    end else if (clk_cnt < CLK_DIV) begin
+                    end else if (clk_cnt < T_HOLD + T_SETUP) begin
+                        // Setup time: data already stable
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 0;
+                        sda_out <= data_buf[7 - bit_cnt];
+                    end else if (clk_cnt < T_HOLD + T_SETUP + CLK_DIV/2) begin
+                        // SCL high phase
                         clk_cnt <= clk_cnt + 1;
                         scl <= 1;
                     end else begin
@@ -473,13 +522,18 @@ module i2c_master_oled(
                 end
                 
                 ACK3: begin
-                    if (clk_cnt < CLK_DIV/2) begin
+                    if (clk_cnt < T_HOLD) begin
                         clk_cnt <= clk_cnt + 1;
                         scl <= 0;
                         sda_en <= 0;
-                    end else if (clk_cnt < CLK_DIV) begin
+                    end else if (clk_cnt < T_HOLD + T_SETUP) begin
                         clk_cnt <= clk_cnt + 1;
-                        scl <= 1;
+                        scl <= 0;
+                        sda_en <= 0;
+                    end else if (clk_cnt < T_HOLD + T_SETUP + CLK_DIV/2) begin
+                        clk_cnt <= clk_cnt + 1;
+                        scl <= 1;  // Sample ACK
+                        sda_en <= 0;
                     end else begin
                         clk_cnt <= 0;
                         sda_en <= 1;
@@ -488,17 +542,21 @@ module i2c_master_oled(
                 end
                 
                 STOP_BIT: begin
-                    if (clk_cnt < CLK_DIV/4) begin
+                    if (clk_cnt < T_HOLD) begin
+                        // Bring SCL low first
                         clk_cnt <= clk_cnt + 1;
                         scl <= 0;
                         sda_out <= 0;
-                    end else if (clk_cnt < CLK_DIV/2) begin
+                    end else if (clk_cnt < T_HOLD + T_SETUP) begin
+                        // Setup: bring SCL high while SDA is still low
                         clk_cnt <= clk_cnt + 1;
                         scl <= 1;
                         sda_out <= 0;
-                    end else if (clk_cnt < 3*CLK_DIV/4) begin
+                    end else if (clk_cnt < T_HOLD + T_SETUP + T_SSTOP) begin
+                        // Stop condition: SDA low-to-high while SCL high (tSSTOP)
                         clk_cnt <= clk_cnt + 1;
-                        sda_out <= 1;  // Stop condition: SDA low-to-high while SCL high
+                        scl <= 1;
+                        sda_out <= 1;
                     end else begin
                         clk_cnt <= 0;
                         done <= 1;
