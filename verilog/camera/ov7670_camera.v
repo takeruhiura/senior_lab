@@ -100,7 +100,7 @@ module ov7670_camera #(
     
     localparam I2C_IDLE = 0,
                I2C_START = 1,
-               I2C_ADDR = 2,
+               I2C_SEND_ADDR = 2,
                I2C_ADDR_ACK = 3,
                I2C_DATA = 4,
                I2C_DATA_ACK = 5,
@@ -155,11 +155,11 @@ module ov7670_camera #(
                 
                 I2C_START: begin
                     ov7670_scl <= 0;
-                    i2c_state <= I2C_ADDR;
+                    i2c_state <= I2C_SEND_ADDR;
                     i2c_bit_counter <= 7;
                 end
                 
-                I2C_ADDR: begin
+                I2C_SEND_ADDR: begin
                     ov7670_scl <= 1;
                     i2c_sda_out <= i2c_addr_reg[i2c_bit_counter];
                     if (i2c_bit_counter == 0) begin
